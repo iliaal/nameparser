@@ -47,6 +47,13 @@ class CredentialCollisionTest extends TestCase
             'given Vi, three tokens'              => ['An Tran Vi', 'An', 'Tran Vi', ''],
             'surname Ma, comma'                   => ['Ma, Wei', 'Wei', 'Ma', ''],
             'surname Ma, two tokens'              => ['Wei Ma', 'Wei', 'Ma', ''],
+
+            // Census surnames colliding with roman-numeral / MBA suffixes
+            'surname Ii in comma segment'         => ['Brown, Ii', 'Ii', 'Brown', ''],
+            'surname Iv in comma segment'         => ['Brown, Iv', 'Iv', 'Brown', ''],
+            'surname Mba, three tokens'           => ['John Adam Mba', 'John', 'Mba', ''],
+            // uppercase roman numeral is still a credential, not a name
+            'uppercase II is a suffix'            => ['John Smith II', 'John', 'Smith', 'II'],
         ];
     }
 

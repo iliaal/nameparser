@@ -45,6 +45,9 @@ class NicknameMapper extends AbstractMapper
 
         $closingDelimiter = '';
 
+        /** @var PartArray $pending parts mapped under the current still-open delimiter */
+        $pending = [];
+
         foreach ($parts as $k => $part) {
             if ($part instanceof AbstractPart) {
                 continue;
@@ -52,20 +55,32 @@ class NicknameMapper extends AbstractMapper
 
             if (preg_match($regexp, $part, $matches)) {
                 $isEncapsulated = true;
-                $part = substr($part, 1);
+                $part = mb_substr($part, 1);
                 $closingDelimiter = $this->delimiters[$matches[1]];
+                $pending = [];
             }
 
             if (! $isEncapsulated) {
                 continue;
             }
 
-            if ($closingDelimiter === substr($part, -1)) {
+            $pending[$k] = $parts[$k];
+
+            if ($closingDelimiter === mb_substr($part, -1, 1)) {
                 $isEncapsulated = false;
-                $part = substr($part, 0, -1);
+                $part = mb_substr($part, 0, -1);
+                $pending = [];
             }
 
             $parts[$k] = new Nickname(str_replace(['"', '\''], '', $part));
+        }
+
+        // an opening delimiter with no matching close is not a nickname: revert
+        // the swallowed parts so the surname survives (e.g. "John (Bob Smith").
+        if ($isEncapsulated) {
+            foreach ($pending as $k => $original) {
+                $parts[$k] = $original;
+            }
         }
 
         return $parts;

@@ -20,6 +20,9 @@ class SuffixMapper extends AbstractMapper
         'do' => true, 'vi' => true, 'vii' => true, 'viii' => true,
         'ix' => true, 'x' => true, 'ma' => true, 'ms' => true,
         'pe' => true, 'dc' => true, 'pa' => true,
+        // multi-char roman numerals + creds that are also real US surnames
+        // (Census: Ii, Iv, Mba); casing still strips the genuine credential.
+        'ii' => true, 'iii' => true, 'iv' => true, 'mba' => true,
     ];
 
     /**
