@@ -3,3 +3,7 @@
 /.phpunit.cache/
 /.php-cs-fixer.cache
 phpunit.xml
+
+# local agent context (not shipped)
+/AGENTS.md
+/CLAUDE.md
