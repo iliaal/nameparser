@@ -36,7 +36,14 @@ class Confidence
             $tokenLower = $tokenLetters !== '' && $tokenLetters === mb_strtolower($tokenLetters, 'UTF-8')
                 && $tokenLetters !== mb_strtoupper($tokenLetters, 'UTF-8');
 
-            if ($uniformUpper || $uniformLower) {
+            if ($uniformUpper) {
+                // an uppercase token is read as a credential and stripped; only
+                // a name-leaning key (Do, Ma, Ba...) is genuinely at risk of
+                // being a mis-stripped name, so don't flag uppercase "RN"/"PT".
+                if (isset(SuffixMapper::NAME_LEANING_KEYS[$key])) {
+                    $notes[] = "'{$token}' could be a name or a credential; input casing is uniform";
+                }
+            } elseif ($uniformLower) {
                 $notes[] = "'{$token}' could be a name or a credential; input casing is uniform";
             } elseif ($tokenLower) {
                 $notes[] = "'{$token}' could be a name or a credential; token is lowercase";

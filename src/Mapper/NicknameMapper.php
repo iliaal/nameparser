@@ -81,6 +81,20 @@ class NicknameMapper extends AbstractMapper
             foreach ($pending as $k => $original) {
                 $parts[$k] = $original;
             }
+
+            // the opening token still carries its unmatched delimiter char; drop
+            // it so a stray "(" or quote does not leak into a name part
+            // ("Bob Jones (" must not yield last name "Jones (").
+            $open = array_key_first($pending);
+            if ($open !== null && is_string($parts[$open])) {
+                $cleaned = ltrim($parts[$open], implode('', array_keys($this->delimiters)));
+                if ($cleaned === '') {
+                    unset($parts[$open]);
+                    $parts = array_values($parts);
+                } else {
+                    $parts[$open] = $cleaned;
+                }
+            }
         }
 
         return $parts;

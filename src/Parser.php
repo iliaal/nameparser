@@ -82,7 +82,11 @@ class Parser
         $segments = explode(',', $name);
 
         if (count($segments) > 1) {
-            return $this->parseSplitName($segments[0], $segments[1], $segments[2] ?? '');
+            // fold any segments after the second into the third so trailing
+            // comma-separated credentials ("Smith, John, MD, PhD") are not lost
+            $third = implode(' ', array_slice($segments, 2));
+
+            return $this->parseSplitName($segments[0], $segments[1], $third);
         }
 
         $parts = explode(' ', $name);
@@ -195,7 +199,11 @@ class Parser
 
         // preg_replace returns null on regex compile error; user-set whitespace
         // characters might produce an invalid pattern, so fall back to the input.
-        return preg_replace('/[' . preg_quote($whitespace, '/') . ']+/', ' ', $name) ?? $name;
+        $name = preg_replace('/[' . preg_quote($whitespace, '/') . ']+/', ' ', $name) ?? $name;
+
+        // trim again: custom whitespace at the edges becomes a space above and
+        // the leading trim() (default charset) would not have removed it.
+        return trim($name);
     }
 
     /**

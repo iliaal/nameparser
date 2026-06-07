@@ -11,8 +11,8 @@ use Iliaal\NameParser\Part\Suffix;
 class SuffixMapper extends AbstractMapper
 {
     /**
-     * Suffix keys that also occur as real given names / surnames
-     * (Vietnamese "Do"/"Vi", Chinese "Ma", roman numerals, 2-letter creds).
+     * Suffix keys that also occur as real given names / surnames (Vietnamese
+     * "Do"/"Vi", Chinese "Ma", roman numerals, short allied-health creds).
      * These get casing + position disambiguation; everything else keeps the
      * original always-strip behavior.
      */
@@ -27,6 +27,16 @@ class SuffixMapper extends AbstractMapper
         // initials "Rn"/"Pt"); casing still strips the uppercase credential.
         'ba' => true, 'bs' => true, 'lac' => true, 'np' => true,
         'od' => true, 'pt' => true, 'rd' => true, 'rn' => true,
+    ];
+
+    /**
+     * The subset of AMBIGUOUS_KEYS that lean toward being a real name rather
+     * than a credential. Used by Confidence to decide whether an uppercase
+     * token in uniform-case input is genuinely undecidable: an uppercase "DO"
+     * could be the surname Do, but an uppercase "RN" is almost always a cred.
+     */
+    public const NAME_LEANING_KEYS = [
+        'do' => true, 'vi' => true, 'ma' => true, 'ba' => true, 'lac' => true,
     ];
 
     /**

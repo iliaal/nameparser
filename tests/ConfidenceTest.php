@@ -27,11 +27,15 @@ class ConfidenceTest extends TestCase
     public static function decidableProvider(): array
     {
         return [
-            'title-case surname Do'   => ['Anh Tran Do'],
-            'title-case given Vi'     => ['Nguyen, Vi'],
-            'all-caps credential DDS' => ['Jane Doe DDS'],
-            'comma credential DO'     => ['Robert Brown, DO'],
-            'plain name'              => ['John Doe'],
+            'title-case surname Do'    => ['Anh Tran Do'],
+            'title-case given Vi'      => ['Nguyen, Vi'],
+            'all-caps credential DDS'  => ['Jane Doe DDS'],
+            'comma credential DO'      => ['Robert Brown, DO'],
+            'plain name'               => ['John Doe'],
+            // uppercase credential-leaning keys must not flag (data is often
+            // all-caps; RN/PT strip cleanly and aren't name-leaning)
+            'all-caps credential RN'   => ['DONNA BARRETT, RN'],
+            'all-caps credential PT'   => ['MARY JONES, PT'],
         ];
     }
 

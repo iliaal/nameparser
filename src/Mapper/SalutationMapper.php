@@ -25,7 +25,7 @@ class SalutationMapper extends AbstractMapper
     #[\Override]
     public function map(array $parts): array
     {
-        $max = ($this->maxIndex > 0) ? $this->maxIndex : floor(count($parts) / 2);
+        $max = ($this->maxIndex > 0) ? min($this->maxIndex, count($parts)) : intdiv(count($parts), 2);
 
         for ($k = 0; $k < $max; $k++) {
             if ($parts[$k] instanceof AbstractPart) {

@@ -38,12 +38,12 @@ class InitialMapper extends AbstractMapper
                 continue;
             }
 
-            if (strtoupper($part) === $part) {
+            if (mb_strtoupper($part, 'UTF-8') === $part) {
                 $stripped = str_replace('.', '', $part);
-                $length = strlen($stripped);
+                $length = mb_strlen($stripped, 'UTF-8');
 
                 if ($length > 1 && $length <= $this->combinedMax) {
-                    array_splice($parts, $k, 1, str_split($stripped));
+                    array_splice($parts, $k, 1, mb_str_split($stripped));
                     $last = count($parts) - 1;
                     $part = $parts[$k];
                 }
@@ -59,12 +59,12 @@ class InitialMapper extends AbstractMapper
 
     protected function isInitial(string $part): bool
     {
-        $length = strlen($part);
+        $length = mb_strlen($part, 'UTF-8');
 
         if ($length === 1) {
             return true;
         }
 
-        return $length === 2 && substr($part, -1) === '.';
+        return $length === 2 && mb_substr($part, -1, 1, 'UTF-8') === '.';
     }
 }

@@ -151,11 +151,13 @@ class Name
      */
     public function getNickname(bool $wrap = false): string
     {
-        if ($wrap) {
-            return sprintf('(%s)', $this->export('Nickname'));
+        $nickname = $this->export('Nickname');
+
+        if ($wrap && $nickname !== '') {
+            return sprintf('(%s)', $nickname);
         }
 
-        return $this->export('Nickname');
+        return $nickname;
     }
 
     /**
