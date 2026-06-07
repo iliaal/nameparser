@@ -28,6 +28,17 @@ casing- and credential-aware parsing on top.
 - Expanded English suffix/salutation dictionary (healthcare and professional
   credentials: DDS, DO, DVM, PsyD, LCSW, MSW, MBA, EMBA, Esq, etc.; roman
   numerals VI–X; `Hon.`/`Honorable`), inherited from the CodeByZach fork.
+- `ii`/`iii`/`iv`/`mba` added to the ambiguous-suffix set: US Census surnames
+  (Ii, Iv, Mba) that the suffix dictionary otherwise stripped to an empty first
+  name in comma form. Casing still strips the genuine credential.
+
+### Fixed
+
+- **Unclosed nickname delimiter no longer swallows the surname.** An opening
+  `(`, `"`, `[`, etc. with no matching close now reverts the affected parts
+  instead of mapping them as a nickname — `"John (Bob Smith"` keeps the last
+  name `Smith`. Ported from
+  [tobyberster/name-parser](https://github.com/tobyberster/name-parser).
 
 ### Changed
 
