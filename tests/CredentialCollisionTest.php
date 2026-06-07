@@ -54,6 +54,20 @@ class CredentialCollisionTest extends TestCase
             'surname Mba, three tokens'           => ['John Adam Mba', 'John', 'Mba', ''],
             // uppercase roman numeral is still a credential, not a name
             'uppercase II is a suffix'            => ['John Smith II', 'John', 'Smith', 'II'],
+
+            // nursing / allied-health credentials (NPI-derived)
+            'comma RN'                            => ['Jane Doe, RN', 'Jane', 'Doe', 'RN'],
+            'comma PharmD'                        => ['Donna Barrett, PHARMD', 'Donna', 'Barrett', 'PharmD'],
+            'comma APRN'                          => ['Karen Hill, APRN', 'Karen', 'Hill', 'APRN'],
+            'space PA-C'                          => ['Tom White PA-C', 'Tom', 'White', 'PA-C'],
+            'comma FNP-C'                         => ['Robert Smith, FNP-C', 'Robert', 'Smith', 'FNP-C'],
+            'comma OTR/L'                         => ['Amy Lee, OTR/L', 'Amy', 'Lee', 'OTR/L'],
+            // surnames colliding with short creds stay names (casing-gated)
+            'surname Ba in comma segment'         => ['Brown, Ba', 'Ba', 'Brown', ''],
+            'surname Lac in comma segment'        => ['Brown, Lac', 'Lac', 'Brown', ''],
+            'surname Ba, two tokens'              => ['Wei Ba', 'Wei', 'Ba', ''],
+            // uppercase BA is the degree, not a name
+            'uppercase BA is a suffix'            => ['Jane Doe, BA', 'Jane', 'Doe', 'BA'],
         ];
     }
 

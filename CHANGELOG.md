@@ -31,6 +31,13 @@ casing- and credential-aware parsing on top.
 - `ii`/`iii`/`iv`/`mba` added to the ambiguous-suffix set: US Census surnames
   (Ii, Iv, Mba) that the suffix dictionary otherwise stripped to an empty first
   name in comma form. Casing still strips the genuine credential.
+- Nursing and allied-health credentials (RN, NP, PharmD, APRN, CRNA, DPT, PA-C,
+  LMSW, LMFT, LPC, FNP, OD, RD, PT, OTR/L, CCC-SLP, and more), mined from the
+  NPPES/NPI registry by frequency. Without them a trailing credential leaked
+  into the first name ("Jane Doe, RN" gave first name "Jane R"). Short
+  collision-prone keys (Ba, Lac, RN, PT...) are casing-gated. Measured against
+  30k real NPI names, first/last accuracy rose from 92.8% to 95.3%, with the
+  credential-bearing format climbing from 44% to 80%.
 
 ### Fixed
 

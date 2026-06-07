@@ -23,6 +23,10 @@ class SuffixMapper extends AbstractMapper
         // multi-char roman numerals + creds that are also real US surnames
         // (Census: Ii, Iv, Mba); casing still strips the genuine credential.
         'ii' => true, 'iii' => true, 'iv' => true, 'mba' => true,
+        // short allied-health creds that are also real names ("Ba", "Lac",
+        // initials "Rn"/"Pt"); casing still strips the uppercase credential.
+        'ba' => true, 'bs' => true, 'lac' => true, 'np' => true,
+        'od' => true, 'pt' => true, 'rd' => true, 'rn' => true,
     ];
 
     /**
