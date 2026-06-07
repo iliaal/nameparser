@@ -70,7 +70,7 @@ class Name
         ];
 
         foreach ($keys as $key => $args) {
-            $method = sprintf('get%s', ucfirst($key));
+            $method = 'get' . ucfirst($key);
             /** @var callable(): string $callable */
             $callable = [$this, $method];
             if ($value = $callable(...$args)) {
@@ -95,7 +95,7 @@ class Name
      */
     public function getFullName(): string
     {
-        return sprintf('%s %s', $this->getGivenName(), $this->getLastname());
+        return $this->getGivenName() . ' ' . $this->getLastname();
     }
 
     /**
@@ -154,7 +154,7 @@ class Name
         $nickname = $this->export('Nickname');
 
         if ($wrap && $nickname !== '') {
-            return sprintf('(%s)', $nickname);
+            return '(' . $nickname . ')';
         }
 
         return $nickname;
@@ -189,7 +189,7 @@ class Name
      */
     protected function isType(AbstractPart $part, string $type, bool $strict = false): bool
     {
-        $className = sprintf('%s\\%s', self::PARTS_NAMESPACE, $type);
+        $className = self::PARTS_NAMESPACE . '\\' . $type;
 
         if ($strict) {
             return get_class($part) === $className;

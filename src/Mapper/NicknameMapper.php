@@ -105,7 +105,7 @@ class NicknameMapper extends AbstractMapper
         $regexp = '/^([';
 
         foreach ($this->delimiters as $opening => $closing) {
-            $regexp .= sprintf('\\%s', $opening);
+            $regexp .= '\\' . $opening;
         }
 
         $regexp .= '])/';
