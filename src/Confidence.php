@@ -37,9 +37,9 @@ class Confidence
                 && $tokenLetters !== mb_strtoupper($tokenLetters, 'UTF-8');
 
             if ($uniformUpper || $uniformLower) {
-                $notes[] = "'{$token}' matches credential but input is uniform-case — name vs credential unresolved";
+                $notes[] = "'{$token}' could be a name or a credential; input casing is uniform";
             } elseif ($tokenLower) {
-                $notes[] = "'{$token}' is lowercase — name vs credential unresolved";
+                $notes[] = "'{$token}' could be a name or a credential; token is lowercase";
             }
         }
 
