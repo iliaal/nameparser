@@ -106,14 +106,6 @@ class NicknameMapper extends AbstractMapper
 
     protected function buildRegexp(): string
     {
-        $regexp = '/^([';
-
-        foreach (array_keys($this->delimiters) as $opening) {
-            $regexp .= '\\' . $opening;
-        }
-
-        $regexp .= '])/';
-
-        return $regexp;
+        return '/^([' . preg_quote(implode('', array_keys($this->delimiters)), '/') . '])/';
     }
 }
