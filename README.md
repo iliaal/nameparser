@@ -55,19 +55,6 @@ ambiguous cases.
 
 ## Installation
 
-Not yet published to Packagist. Install from the Git repository:
-
-```json
-{
-    "repositories": [
-        { "type": "vcs", "url": "https://github.com/iliaal/nameparser" }
-    ],
-    "require": {
-        "iliaal/nameparser": "^1.0"
-    }
-}
-```
-
 ```bash
 composer require iliaal/nameparser
 ```
