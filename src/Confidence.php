@@ -27,7 +27,7 @@ class Confidence
 
         $notes = [];
         foreach ($tokens as $token) {
-            $key = strtolower(str_replace('.', '', $token));
+            $key = mb_strtolower(str_replace('.', '', $token), 'UTF-8');
             if (! isset(SuffixMapper::AMBIGUOUS_KEYS[$key])) {
                 continue;
             }

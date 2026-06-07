@@ -11,12 +11,27 @@ use Iliaal\NameParser\Part\Salutation;
 class SalutationMapper extends AbstractMapper
 {
     /**
+     * Multi-word salutation patterns ("the honorable", "his honour"), split
+     * once. Single-word salutations are handled by the exact-match check in
+     * substituteWithSalutation(), so only these need the subset loop.
+     *
+     * @var list<array{array<int, string>, string}>
+     */
+    private array $multiWord = [];
+
+    /**
      * @param  array<string, string>  $salutations
      */
     public function __construct(
         protected array $salutations,
         protected int $maxIndex = 0,
-    ) {}
+    ) {
+        foreach ($salutations as $key => $salutation) {
+            if (str_contains($key, ' ')) {
+                $this->multiWord[] = [explode(' ', $key), $salutation];
+            }
+        }
+    }
 
     /**
      * @param  PartArray  $parts
@@ -56,8 +71,7 @@ class SalutationMapper extends AbstractMapper
             return $parts;
         }
 
-        foreach ($this->salutations as $key => $salutation) {
-            $keys = explode(' ', $key);
+        foreach ($this->multiWord as [$keys, $salutation]) {
             $length = count($keys);
 
             $subset = array_slice($parts, $start, $length);

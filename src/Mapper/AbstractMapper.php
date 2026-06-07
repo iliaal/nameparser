@@ -59,6 +59,6 @@ abstract class AbstractMapper
      */
     protected function getKey(string $word): string
     {
-        return strtolower(str_replace('.', '', $word));
+        return mb_strtolower(str_replace('.', '', $word), 'UTF-8');
     }
 }

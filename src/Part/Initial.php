@@ -10,6 +10,6 @@ class Initial extends GivenNamePart
     #[\Override]
     public function normalize(): string
     {
-        return strtoupper($this->getValue());
+        return mb_strtoupper($this->getValue(), 'UTF-8');
     }
 }
