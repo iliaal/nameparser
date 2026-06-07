@@ -6,7 +6,7 @@ use Iliaal\NameParser\LanguageInterface;
 
 class English implements LanguageInterface
 {
-    public const SUFFIXES = [
+    public const array SUFFIXES = [
         '1st' => '1st',
         '2nd' => '2nd',
         '3rd' => '3rd',
@@ -95,7 +95,7 @@ class English implements LanguageInterface
         'slp' => 'SLP',
     ];
 
-    public const SALUTATIONS = [
+    public const array SALUTATIONS = [
         'dr' => 'Dr.',
         'fr' => 'Fr.',
         'hon' => 'Hon.',
@@ -117,7 +117,7 @@ class English implements LanguageInterface
         'her honour' => 'Her Honour',
     ];
 
-    public const LASTNAME_PREFIXES = [
+    public const array LASTNAME_PREFIXES = [
         'da' => 'da',
         'de' => 'de',
         'del' => 'del',

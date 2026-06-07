@@ -6,7 +6,7 @@ use Iliaal\NameParser\Part\AbstractPart;
 
 class Name
 {
-    private const PARTS_NAMESPACE = 'Iliaal\NameParser\Part';
+    private const string PARTS_NAMESPACE = 'Iliaal\NameParser\Part';
 
     /**
      * @var array<int, AbstractPart|string> the parts that make up this name
@@ -192,7 +192,7 @@ class Name
         $className = self::PARTS_NAMESPACE . '\\' . $type;
 
         if ($strict) {
-            return get_class($part) === $className;
+            return $part::class === $className;
         }
 
         return is_a($part, $className);

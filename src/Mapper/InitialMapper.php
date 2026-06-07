@@ -65,6 +65,6 @@ class InitialMapper extends AbstractMapper
             return true;
         }
 
-        return $length === 2 && mb_substr($part, -1, 1, 'UTF-8') === '.';
+        return $length === 2 && str_ends_with($part, '.');
     }
 }
