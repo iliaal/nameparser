@@ -30,9 +30,9 @@ ambiguous cases.
 
 - **Casing as a signal.** An ambiguous token (`Do`, `Vi`, `Ma`, roman numerals,
   two-letter credentials) is treated as a credential only when written ALL-CAPS
-  (`DO`, `VI`); Title- or lower-case keeps it as a name part. Real input
-  convention — credentials in caps, names in title case — does the
-  disambiguation the lowercasing used to throw away.
+  (`DO`, `VI`); Title- or lower-case keeps it as a name part. People write
+  credentials in caps and names in title case, so the original casing carries
+  the signal that lowercasing discarded.
 - **Terminal-token guard.** A lone name-colliding token in a comma given-name
   segment is kept as a name rather than emptied into a credential, unless its
   casing reads as a credential.
@@ -77,10 +77,10 @@ $name = $parser->parse('Dr. Jane A. Doe DDS');
 
 $name->getSalutation();   // "Dr."
 $name->getFirstname();    // "Jane"
-$name->getInitials();     // "A"
+$name->getInitials();     // "A."
 $name->getLastname();     // "Doe"
 $name->getSuffix();       // "DDS"
-$name->getFullName();     // "Jane Doe"
+$name->getFullName();     // "Jane A. Doe"
 ```
 
 The full getter surface (`getMiddlename()`, `getNickname()`, `getLastnamePrefix()`,
@@ -95,15 +95,15 @@ the input was decidable from its casing:
 use Iliaal\NameParser\Confidence;
 
 $result = Confidence::assess('NGUYEN, VI');
-// ['ambiguous' => true, 'notes' => ["'VI' matches credential but input is uniform-case — name vs credential unresolved"]]
+// ['ambiguous' => true, 'notes' => ["'VI' could be a name or a credential; input casing is uniform"]]
 
 if ($result['ambiguous']) {
     // queue the row for manual review instead of trusting the parse
 }
 ```
 
-A mixed-case input like `"Nguyen, Vi"` is **not** flagged — the title-case `Vi`
-resolves to the given name with confidence.
+A mixed-case input like `"Nguyen, Vi"` stays unflagged; the title-case `Vi`
+resolves to the given name.
 
 ## Development
 

@@ -36,7 +36,7 @@ casing- and credential-aware parsing on top.
 
 - **Unclosed nickname delimiter no longer swallows the surname.** An opening
   `(`, `"`, `[`, etc. with no matching close now reverts the affected parts
-  instead of mapping them as a nickname — `"John (Bob Smith"` keeps the last
+  instead of mapping them as a nickname. `"John (Bob Smith"` keeps the last
   name `Smith`. Ported from
   [tobyberster/name-parser](https://github.com/tobyberster/name-parser).
 
