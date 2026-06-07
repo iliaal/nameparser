@@ -1,0 +1,10 @@
+parameters:
+    level: 9
+    paths:
+        - src
+        - tests
+    bootstrapFiles:
+        - tests/bootstrap.php
+
+includes:
+    - phpstan-baseline.neon

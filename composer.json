@@ -1,0 +1,50 @@
+{
+    "name": "iliaal/nameparser",
+    "description": "Parse a full-name string into its parts. Casing- and credential-aware fork of theiconic/name-parser, tuned for professional/clinician names.",
+    "type": "library",
+    "keywords": ["name", "parser", "name-parser", "fullname", "credentials", "humanname"],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Ilia Alshanetsky",
+            "email": "ilia@ilia.ws"
+        },
+        {
+            "name": "Zachary Miller",
+            "email": "codebyzach@gmail.com"
+        },
+        {
+            "name": "The Iconic",
+            "email": "engineering@theiconic.com.au"
+        }
+    ],
+    "require": {
+        "php": "^8.3",
+        "ext-mbstring": "*"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.64",
+        "php-mock/php-mock-phpunit": "^2.15",
+        "phpstan/phpstan": "^2.1",
+        "phpunit/phpunit": "^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Iliaal\\NameParser\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\Iliaal\\NameParser\\": "tests/"
+        }
+    },
+    "scripts": {
+        "analyse": "phpstan analyse",
+        "lint": "php-cs-fixer fix --dry-run --diff",
+        "lint:fix": "php-cs-fixer fix",
+        "test": "phpunit"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}
