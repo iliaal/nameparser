@@ -13,39 +13,14 @@ casing- and credential-aware parsing on top.
 
 ### Added
 
-- **Casing as a disambiguation signal** in `SuffixMapper`: tokens that collide
-  with real names (`Do`, `Vi`, `Ma`, roman numerals, two-letter credentials) are
-  read as a credential only when written ALL-CAPS; Title- or lower-case keeps
-  them as name parts. Resolves false-positive suffix matches on names such as
-  the Vietnamese surname "Do" and given name "Vi".
-- **Terminal-token guard** in `SuffixMapper`: a lone name-colliding token in a
-  comma given-name segment is never consumed as a credential when doing so would
-  empty out the name (unless its casing reads as a credential).
-- **`Confidence` assessor**: an advisory pass that flags inputs where a token
-  matches a credential but the casing signal is uninformative (uniform-case
-  input or a lowercase token), so callers can route the row to manual review
-  instead of trusting a silently-chosen split.
-- Expanded English suffix/salutation dictionary (healthcare and professional
-  credentials: DDS, DO, DVM, PsyD, LCSW, MSW, MBA, EMBA, Esq, etc.; roman
-  numerals VI–X; `Hon.`/`Honorable`), inherited from the CodeByZach fork.
-- `ii`/`iii`/`iv`/`mba` added to the ambiguous-suffix set: US Census surnames
-  (Ii, Iv, Mba) that the suffix dictionary otherwise stripped to an empty first
-  name in comma form. Casing still strips the genuine credential.
-- Nursing and allied-health credentials (RN, NP, PharmD, APRN, CRNA, DPT, PA-C,
-  LMSW, LMFT, LPC, FNP, OD, RD, PT, OTR/L, CCC-SLP, and more), mined from the
-  NPPES/NPI registry by frequency. Without them a trailing credential leaked
-  into the first name ("Jane Doe, RN" gave first name "Jane R"). Short
-  collision-prone keys (Ba, Lac, RN, PT...) are casing-gated. Measured against
-  30k real NPI names, first/last accuracy rose from 92.8% to 95.3%, with the
-  credential-bearing format climbing from 44% to 80%.
+- Casing-aware credential matching: an ALL-CAPS token reads as a credential, title or lower case as a name, so surnames like Do, Vi, Ma, and Ba no longer parse as suffixes.
+- Nursing and allied-health credentials from the NPI registry (RN, NP, PharmD, APRN, PA-C, OTR/L, and 30+ more); first/last accuracy on 30k real names rose from 92.8% to 95.3%.
+- `Confidence::assess()` flags names whose credential-vs-name split is undecidable from casing, for manual review.
+- Expanded base credential and salutation dictionary (DDS, DO, DVM, PsyD, LCSW, Hon., roman numerals VI to X), from the CodeByZach fork.
 
 ### Fixed
 
-- **Unclosed nickname delimiter no longer swallows the surname.** An opening
-  `(`, `"`, `[`, etc. with no matching close now reverts the affected parts
-  instead of mapping them as a nickname. `"John (Bob Smith"` keeps the last
-  name `Smith`. Ported from
-  [tobyberster/name-parser](https://github.com/tobyberster/name-parser).
+- Unclosed nickname delimiter no longer swallows the surname; "John (Bob Smith" keeps last name Smith (via tobyberster/name-parser).
 
 ### Changed
 
