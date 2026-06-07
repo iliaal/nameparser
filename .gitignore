@@ -7,3 +7,6 @@ phpunit.xml
 # local agent context (not shipped)
 /AGENTS.md
 /CLAUDE.md
+
+# local NPI-derived validation corpus (real provider names, not shipped)
+/corpus-npi.tsv
