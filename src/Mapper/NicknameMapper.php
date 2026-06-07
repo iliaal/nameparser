@@ -22,6 +22,8 @@ class NicknameMapper extends AbstractMapper
         '\'' => '\'',
     ];
 
+    protected string $regexp;
+
     /**
      * @param  array<string, string>  $delimiters
      */
@@ -30,6 +32,8 @@ class NicknameMapper extends AbstractMapper
         if (! empty($delimiters)) {
             $this->delimiters = $delimiters;
         }
+
+        $this->regexp = $this->buildRegexp();
     }
 
     /**
@@ -41,7 +45,7 @@ class NicknameMapper extends AbstractMapper
     {
         $isEncapsulated = false;
 
-        $regexp = $this->buildRegexp();
+        $regexp = $this->regexp;
 
         $closingDelimiter = '';
 
@@ -104,7 +108,7 @@ class NicknameMapper extends AbstractMapper
     {
         $regexp = '/^([';
 
-        foreach ($this->delimiters as $opening => $closing) {
+        foreach (array_keys($this->delimiters) as $opening) {
             $regexp .= '\\' . $opening;
         }
 

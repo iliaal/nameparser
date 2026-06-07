@@ -7,8 +7,7 @@ use Iliaal\NameParser\Part\Initial;
 
 /**
  * single letter, possibly followed by a period
- */
-/**
+ *
  * @phpstan-import-type PartArray from AbstractMapper
  */
 class InitialMapper extends AbstractMapper
