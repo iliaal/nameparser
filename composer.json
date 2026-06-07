@@ -8,14 +8,6 @@
         {
             "name": "Ilia Alshanetsky",
             "email": "ilia@ilia.ws"
-        },
-        {
-            "name": "Zachary Miller",
-            "email": "codebyzach@gmail.com"
-        },
-        {
-            "name": "The Iconic",
-            "email": "engineering@theiconic.com.au"
         }
     ],
     "require": {
