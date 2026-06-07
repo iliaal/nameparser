@@ -2,7 +2,6 @@
 
 [![CI](https://github.com/iliaal/nameparser/actions/workflows/ci.yml/badge.svg)](https://github.com/iliaal/nameparser/actions/workflows/ci.yml)
 [![Latest Version](https://img.shields.io/packagist/v/iliaal/nameparser)](https://packagist.org/packages/iliaal/nameparser)
-[![Downloads](https://img.shields.io/packagist/dt/iliaal/nameparser)](https://packagist.org/packages/iliaal/nameparser)
 [![PHP Version](https://img.shields.io/packagist/php-v/iliaal/nameparser)](https://packagist.org/packages/iliaal/nameparser)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Follow @iliaa](https://img.shields.io/badge/Follow-@iliaa-000000?style=flat&logo=x&logoColor=white)](https://x.com/intent/follow?screen_name=iliaa)
