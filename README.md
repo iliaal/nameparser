@@ -41,7 +41,12 @@ ambiguous cases.
   flags the input so you can route it to manual review instead of trusting the
   split.
 - **Expanded English dictionary** (inherited from the CodeByZach fork): DDS, DO,
-  DVM, PsyD, LCSW, MSW, MBA, EMBA, Esq, roman numerals VI–X, `Hon.`, and more.
+  DVM, PsyD, LCSW, MSW, MBA, EMBA, Esq, roman numerals VI to X, `Hon.`, and more.
+- **Nursing and allied-health credentials.** RN, NP, PharmD, APRN, PA-C, OTR/L,
+  and 30+ more, mined by frequency from the NPI registry, so a trailing
+  credential no longer leaks into the first name.
+- **Unclosed nickname delimiter.** An opening `(` or quote with no matching
+  close no longer swallows the surname (`"John (Bob Smith"` keeps `Smith`).
 
 ## Requirements
 

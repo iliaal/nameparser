@@ -21,4 +21,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- Unclosed nickname delimiter no longer swallows the surname; "John (Bob Smith" keeps last name Smith (via tobyberster/name-parser).
+- Unclosed nickname delimiter no longer swallows the surname or leaks a stray bracket; "John (Bob Smith" keeps last name Smith (via tobyberster/name-parser).
+- Multibyte initials are no longer corrupted; accented tokens like "É Durand" survive instead of becoming replacement characters.
+- Trailing comma-separated credentials are no longer dropped; "Smith, John, MD, PhD" keeps both.
+- Empty nickname no longer renders as "()" in the string cast of a name.
+- `setWhitespace()` now trims the configured characters from the edges of the input.
+- `setMaxSalutationIndex()` larger than the token count no longer emits undefined-array-key warnings.
