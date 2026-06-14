@@ -37,10 +37,13 @@ class Confidence
                 && $tokenLetters !== mb_strtoupper($tokenLetters, 'UTF-8');
 
             if ($uniformUpper) {
-                // an uppercase token is read as a credential and stripped; only
-                // a name-leaning key (Do, Ma, Ba...) is genuinely at risk of
-                // being a mis-stripped name, so don't flag uppercase "RN"/"PT".
-                if (isset(SuffixMapper::NAME_LEANING_KEYS[$key])) {
+                // an uppercase token is read as a credential and stripped; flag
+                // it only when it plausibly collides with a real name (Do, Ma,
+                // Ba... or a Census surname like Ii/Iv/Mba), since casing
+                // carries no signal here. Clean creds (RN/PT/OD...) stay
+                // unflagged to keep review noise down on all-caps datasets.
+                if (isset(SuffixMapper::NAME_LEANING_KEYS[$key])
+                    || isset(SuffixMapper::SURNAME_COLLIDING_KEYS[$key])) {
                     $notes[] = "'{$token}' could be a name or a credential; input casing is uniform";
                 }
             } elseif ($uniformLower) {

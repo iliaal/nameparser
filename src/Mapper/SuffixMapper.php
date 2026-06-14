@@ -40,6 +40,19 @@ class SuffixMapper extends AbstractMapper
     ];
 
     /**
+     * AMBIGUOUS_KEYS that also occur as real US surnames per Census data (Ii,
+     * Iv, Mba and the related roman numerals). Distinct from NAME_LEANING_KEYS:
+     * under any single casing these read as a credential, but in uniform-case
+     * input where casing carries no signal they could equally be a surname, so
+     * Confidence treats an all-caps occurrence as undecidable. Clean creds that
+     * are not real names (Rn, Pt, Od...) stay suppressed to keep review noise
+     * down on the all-caps datasets this parser targets.
+     */
+    public const array SURNAME_COLLIDING_KEYS = [
+        'ii' => true, 'iii' => true, 'iv' => true, 'mba' => true,
+    ];
+
+    /**
      * @param  array<string, string>  $suffixes
      */
     public function __construct(

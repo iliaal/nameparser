@@ -14,6 +14,12 @@ class Name
     protected array $parts = [];
 
     /**
+     * the normalized input this name was parsed from, retained so the advisory
+     * confidence signal can be derived from the same string the parser saw
+     */
+    protected ?string $source = null;
+
+    /**
      * constructor takes the array of parts this name consists of
      *
      * @param  array<int, AbstractPart|string>|null  $parts
@@ -51,6 +57,55 @@ class Name
     public function getParts(): array
     {
         return $this->parts;
+    }
+
+    /**
+     * record the normalized input this name was parsed from
+     *
+     * @return $this
+     */
+    public function setSource(string $source): Name
+    {
+        $this->source = $source;
+
+        return $this;
+    }
+
+    /**
+     * advisory confidence signal for this parse, derived from the same input
+     * the parser saw; falls back to the reconstructed name when no source was
+     * recorded (e.g. a manually constructed Name). parse() is unaffected: this
+     * is a read-only check the caller opts into.
+     *
+     * @return array{ambiguous: bool, notes: list<string>}
+     */
+    public function getConfidence(): array
+    {
+        return Confidence::assess($this->source ?? $this->__toString());
+    }
+
+    /**
+     * machine-readable view of every part with a stable key set: each key is
+     * always present, empty string when the part is absent. Unlike getAll(),
+     * which omits empties and varies its keys, this is safe to consume without
+     * existence checks.
+     *
+     * @return array{salutation: string, firstname: string, initials: string, middlename: string, lastname_prefix: string, lastname: string, suffix: string, nickname: string, given_name: string, full_name: string}
+     */
+    public function toArray(): array
+    {
+        return [
+            'salutation' => $this->getSalutation(),
+            'firstname' => $this->getFirstname(),
+            'initials' => $this->getInitials(),
+            'middlename' => $this->getMiddlename(),
+            'lastname_prefix' => $this->getLastnamePrefix(),
+            'lastname' => $this->getLastname(),
+            'suffix' => $this->getSuffix(),
+            'nickname' => $this->getNickname(),
+            'given_name' => $this->getGivenName(),
+            'full_name' => $this->getFullName(),
+        ];
     }
 
     /**

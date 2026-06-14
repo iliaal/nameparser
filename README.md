@@ -84,24 +84,54 @@ $name->getFullName();     // "Jane A. Doe"
 The full getter surface (`getMiddlename()`, `getNickname()`, `getLastnamePrefix()`,
 `getGivenName()`, `getAll()`) is unchanged from upstream.
 
+### Structured output
+
+`toArray()` returns every part under a fixed key set, with an empty string for
+any part that is absent. Unlike `getAll()`, which omits empty parts and varies
+its keys, this shape is safe to consume without existence checks:
+
+```php
+$parser->parse('Dr. Jane A. Doe DDS')->toArray();
+// [
+//   'salutation' => 'Dr.', 'firstname' => 'Jane', 'initials' => 'A.',
+//   'middlename' => '', 'lastname_prefix' => '', 'lastname' => 'Doe',
+//   'suffix' => 'DDS', 'nickname' => '', 'given_name' => 'Jane A. Doe',
+//   'full_name' => 'Jane A. Doe',
+// ]
+```
+
 ### Confidence / ambiguity
 
 For batch imports where a wrong split is a data-integrity problem, check whether
-the input was decidable from its casing:
+the input was decidable from its casing. The signal is available two ways: as a
+standalone pre-check on a raw string, or on the parsed result itself.
 
 ```php
 use Iliaal\NameParser\Confidence;
 
+// pre-check, before parsing
 $result = Confidence::assess('NGUYEN, VI');
 // ['ambiguous' => true, 'notes' => ["'VI' could be a name or a credential; input casing is uniform"]]
+
+// or read it off the parse; same signal, derived from the same input
+$result = $parser->parse('NGUYEN, VI')->getConfidence();
 
 if ($result['ambiguous']) {
     // queue the row for manual review instead of trusting the parse
 }
 ```
 
-A mixed-case input like `"Nguyen, Vi"` stays unflagged; the title-case `Vi`
-resolves to the given name.
+`getConfidence()` is read-only and does not change what `parse()` returns; it is
+an advisory pass you opt into. A mixed-case input like `"Nguyen, Vi"` stays
+unflagged; the title-case `Vi` resolves to the given name.
+
+> **All-caps limitation.** Disambiguation keys off casing, so uniform-case input
+> (all-caps legacy and registry data, or all-lowercase) carries no signal: an
+> ambiguous trailing token reads as a credential by default. The confidence pass
+> flags these when the token plausibly collides with a real name (`Do`, `Vi`,
+> `Ma`, roman numerals, `MBA`), so you can route them to review. Clean
+> credentials that are not also names (`RN`, `PT`, `OD`) are left unflagged to
+> keep review volume manageable on all-caps datasets.
 
 ## Development
 

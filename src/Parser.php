@@ -86,7 +86,7 @@ class Parser
             // comma-separated credentials ("Smith, John, MD, PhD") are not lost
             $third = implode(' ', array_slice($segments, 2));
 
-            return $this->parseSplitName($segments[0], $segments[1], $third);
+            return $this->parseSplitName($segments[0], $segments[1], $third)->setSource($name);
         }
 
         $parts = explode(' ', $name);
@@ -95,7 +95,7 @@ class Parser
             $parts = $mapper->map($parts);
         }
 
-        return new Name($parts);
+        return (new Name($parts))->setSource($name);
     }
 
     /**

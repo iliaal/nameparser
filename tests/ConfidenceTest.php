@@ -18,6 +18,10 @@ class ConfidenceTest extends TestCase
             'all lower, do collides'       => ['anh tran do'],
             'all lower comma, do collides' => ['smith, do'],
             'all caps comma, VI collides'  => ['NGUYEN, VI'],
+            // all-caps Census-surname colliders: casing carries no signal, so
+            // the stripped roman numeral / MBA could equally be a surname
+            'all caps surname-collider II'  => ['JOHN SMITH II'],
+            'all caps surname-collider MBA' => ['JANE DOE MBA'],
         ];
     }
 
