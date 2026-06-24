@@ -150,7 +150,12 @@ class Name
      */
     public function getFullName(): string
     {
-        return $this->getGivenName() . ' ' . $this->getLastname();
+        $parts = array_filter(
+            [$this->getGivenName(), $this->getLastname()],
+            static fn(string $part): bool => $part !== '',
+        );
+
+        return implode(' ', $parts);
     }
 
     /**

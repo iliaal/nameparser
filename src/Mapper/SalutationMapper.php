@@ -42,7 +42,10 @@ class SalutationMapper extends AbstractMapper
     {
         $max = ($this->maxIndex > 0) ? min($this->maxIndex, count($parts)) : intdiv(count($parts), 2);
 
-        for ($k = 0; $k < $max; $k++) {
+        // count($parts) is re-checked each step: a multi-word match in
+        // substituteWithSalutation() splices several tokens into one, shrinking
+        // the array below the $max computed up front.
+        for ($k = 0; $k < $max && $k < count($parts); $k++) {
             if ($parts[$k] instanceof AbstractPart) {
                 break;
             }
@@ -98,6 +101,13 @@ class SalutationMapper extends AbstractMapper
      */
     private function isMatchingSubset(array $keys, array $subset): bool
     {
+        // array_slice() returns fewer parts than the pattern near the end of the
+        // token list; without this a one-token tail would match the first key of
+        // a multi-word salutation ("Smith, Her" -> "Her Honour").
+        if (count($subset) !== count($keys)) {
+            return false;
+        }
+
         for ($i = 0; $i < count($subset); $i++) {
             $part = $subset[$i];
             if (! is_string($part) || $this->getKey($part) !== $keys[$i]) {

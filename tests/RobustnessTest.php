@@ -102,4 +102,24 @@ class RobustnessTest extends TestCase
         $this->assertSame('Smith', $name->getLastname());
         $this->assertSame('', $name->getFirstname());
     }
+
+    /**
+     * A one-token tail must not partial-match the first word of a multi-word
+     * salutation pattern ("her honour"); "Her" stays a name, not a salutation,
+     * even with the salutation scan reaching the final token.
+     */
+    public function testPartialMultiWordSalutationIsNotMatched(): void
+    {
+        $parser = new Parser();
+        $parser->setMaxSalutationIndex(10);
+
+        $name = $parser->parse('Smith, Her');
+        $this->assertSame('', $name->getSalutation());
+        $this->assertSame('Her', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+
+        // the full multi-word salutation still matches
+        $full = $parser->parse('Her Honour Mary Smith');
+        $this->assertSame('Her Honour', $full->getSalutation());
+    }
 }

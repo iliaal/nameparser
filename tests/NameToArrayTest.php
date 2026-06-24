@@ -31,6 +31,17 @@ class NameToArrayTest extends TestCase
         $this->assertSame('Jane A. Doe', $array['full_name']);
     }
 
+    public function testFullNameHasNoStrayPaddingWhenASideIsAbsent(): void
+    {
+        $firstOnly = (new Parser())->parse('John');
+        $this->assertSame('John', $firstOnly->getFullName());
+        $this->assertSame('John', $firstOnly->toArray()['full_name']);
+
+        $lastOnly = (new Parser())->parse('Smith, MD');
+        $this->assertSame('Smith', $lastOnly->getFullName());
+        $this->assertSame('Smith', $lastOnly->toArray()['full_name']);
+    }
+
     public function testAbsentPartsAreEmptyStringsNotMissingKeys(): void
     {
         $array = (new Parser())->parse('John Doe')->toArray();

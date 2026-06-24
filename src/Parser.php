@@ -170,7 +170,13 @@ class Parser
     }
 
     /**
-     * set the mappers for this parser
+     * set the mappers for this parser.
+     *
+     * Only the single-segment (non-comma) pipeline uses this list. Comma input
+     * ("Last, First") is parsed by dedicated surname/given-name sub-parsers
+     * (getFirstSegmentParser/getSecondSegmentParser) that build their own mapper
+     * lists, so a custom list set here does not affect comma forms. The language
+     * dictionaries do propagate to those sub-parsers.
      *
      * @param  array<int, \Iliaal\NameParser\Mapper\AbstractMapper>  $mappers
      */
@@ -179,6 +185,19 @@ class Parser
         $this->mappers = $mappers;
 
         return $this;
+    }
+
+    /**
+     * drop the memoized mapper pipeline and comma-segment sub-parsers so the
+     * next parse() rebuilds them from the current configuration. Config setters
+     * call this; without it, changing a setting after the first parse() has no
+     * effect on a reused instance.
+     */
+    private function invalidateMapperCache(): void
+    {
+        $this->mappers = [];
+        $this->firstSegmentParser = null;
+        $this->secondSegmentParser = null;
     }
 
     /**
@@ -270,6 +289,7 @@ class Parser
     public function setNicknameDelimiters(array $nicknameDelimiters): Parser
     {
         $this->nicknameDelimiters = $nicknameDelimiters;
+        $this->invalidateMapperCache();
 
         return $this;
     }
@@ -282,6 +302,7 @@ class Parser
     public function setMaxSalutationIndex(int $maxSalutationIndex): Parser
     {
         $this->maxSalutationIndex = $maxSalutationIndex;
+        $this->invalidateMapperCache();
 
         return $this;
     }
@@ -294,6 +315,7 @@ class Parser
     public function setMaxCombinedInitials(int $maxCombinedInitials): Parser
     {
         $this->maxCombinedInitials = $maxCombinedInitials;
+        $this->invalidateMapperCache();
 
         return $this;
     }

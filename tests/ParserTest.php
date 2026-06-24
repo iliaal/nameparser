@@ -628,6 +628,28 @@ class ParserTest extends TestCase
         $this->assertSame('P A G', $parser->parse('Charles PAG Mountbatten-Windsor')->getInitials());
     }
 
+    public function testConfigChangeAfterFirstParseTakesEffect(): void
+    {
+        // a reused parser must honor a setter called after the first parse(),
+        // not the configuration cached on that first call
+
+        $parser = new Parser();
+        $parser->parse('Anne Jones');
+        $parser->setMaxCombinedInitials(1);
+        $this->assertSame('', $parser->parse('DJ Westbam')->getInitials());
+
+        $parser = new Parser();
+        $parser->parse('Anne Jones');
+        $parser->setMaxSalutationIndex(2);
+        $this->assertSame('Mr.', $parser->parse('Francis Mr')->getSalutation());
+
+        $parser = new Parser();
+        $parser->parse('John (Bob) Smith');
+        $parser->setNicknameDelimiters(['<' => '>']);
+        $this->assertSame('Bob', $parser->parse('John <Bob> Smith')->getNickname());
+        $this->assertSame('', $parser->parse('John (Bob) Smith')->getNickname());
+    }
+
     public function testParserAndSubparsersProperlyHandleLanguages(): void
     {
         $parser = new Parser([
