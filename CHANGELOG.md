@@ -10,6 +10,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Dutch and Spanish surname particles (den, ten, los, las), so "van den Heuvel" and "de los Santos" keep the full surname.
 - German (vom, zu, zum, zur) and French (le, des) particles in the default parser, so "vom Bruch" and "le Pen" parse without a language class.
+- `setSurnameFirst(true)` reads comma-less names in CJK order (surname first), so "Mao Zedong" gives last "Mao". Opt-in; auto-detection from romanized text is not possible.
 
 ### Fixed
 

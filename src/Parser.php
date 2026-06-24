@@ -35,6 +35,15 @@ class Parser
     protected int $maxCombinedInitials = 2;
 
     /**
+     * when true, a space-separated name with no comma is read surname-first
+     * (CJK order, "Mao Zedong"): the first token is the surname, the rest is the
+     * given-name segment. The caller asserts the order for the batch, the same
+     * contract as the comma form; auto-detection is not possible from romanized
+     * text where "Lee Harvey" and "Mao Zedong" are structurally identical.
+     */
+    protected bool $surnameFirst = false;
+
+    /**
      * memoized merge of all languages' lastname prefixes
      *
      * @var array<string, string>|null
@@ -98,6 +107,16 @@ class Parser
             $given = implode(' ', array_slice($segments, 1));
 
             return $this->parseSplitName($segments[0], $given)->setSource($name);
+        }
+
+        if ($this->surnameFirst) {
+            $parts = explode(' ', $name);
+
+            if (count($parts) > 1) {
+                $surname = array_shift($parts);
+
+                return $this->parseSplitName($surname, implode(' ', $parts))->setSource($name);
+            }
         }
 
         $parts = explode(' ', $name);
@@ -316,6 +335,22 @@ class Parser
     {
         $this->maxCombinedInitials = $maxCombinedInitials;
         $this->invalidateMapperCache();
+
+        return $this;
+    }
+
+    public function isSurnameFirst(): bool
+    {
+        return $this->surnameFirst;
+    }
+
+    /**
+     * read space-separated input surname-first (CJK order). Only affects names
+     * without a comma; the mapper pipeline is unchanged, so no cache to drop.
+     */
+    public function setSurnameFirst(bool $surnameFirst): Parser
+    {
+        $this->surnameFirst = $surnameFirst;
 
         return $this;
     }
