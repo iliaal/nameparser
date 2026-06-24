@@ -3,6 +3,7 @@
 namespace Tests\Iliaal\NameParser;
 
 use Iliaal\NameParser\Parser;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -62,5 +63,43 @@ class RobustnessTest extends TestCase
     {
         $this->assertSame('Jones', (new Parser())->parse('Bob Jones (')->getLastname());
         $this->assertSame('Smith', (new Parser())->parse('John (Bob Smith')->getLastname());
+    }
+
+    /**
+     * A lone nickname delimiter is stripped to nothing, leaving no parts. The
+     * parser must return an empty Name rather than throw, so one malformed cell
+     * does not abort a batch import. failOnWarning also catches the undefined
+     * array-key warning that preceded the TypeError.
+     */
+    #[DataProvider('loneDelimiterProvider')]
+    public function testLoneDelimiterTokenDoesNotCrash(string $input): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame('', $name->getFirstname());
+        $this->assertSame('', $name->getLastname());
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function loneDelimiterProvider(): array
+    {
+        return [
+            'open paren'   => ['('],
+            'open brace'   => ['{'],
+            'open bracket' => ['['],
+            'open angle'   => ['<'],
+            'double quote' => ['"'],
+            'single quote' => ["'"],
+        ];
+    }
+
+    public function testCommaSegmentWithLoneDelimiterKeepsSurname(): void
+    {
+        $name = (new Parser())->parse('Smith, (');
+
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('', $name->getFirstname());
     }
 }

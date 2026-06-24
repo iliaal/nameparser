@@ -10,3 +10,6 @@ phpunit.xml
 
 # local NPI-derived validation corpus (real provider names, not shipped)
 /corpus-npi.tsv
+
+# codesage local index + review state (machine-specific, not shipped)
+/.codesage/
