@@ -6,14 +6,19 @@ use Iliaal\NameParser\Part\AbstractPart;
 use Iliaal\NameParser\Part\Firstname;
 use Iliaal\NameParser\Part\Lastname;
 use Iliaal\NameParser\Part\Middlename;
+use Iliaal\NameParser\Part\MiddlenamePrefix;
 
 /**
  * @phpstan-import-type PartArray from AbstractMapper
  */
 class MiddlenameMapper extends AbstractMapper
 {
+    /**
+     * @param  array<string, string>  $prefixes
+     */
     public function __construct(
         protected bool $mapWithoutLastname = false,
+        protected array $prefixes = [],
     ) {}
 
     /**
@@ -60,9 +65,25 @@ class MiddlenameMapper extends AbstractMapper
                 continue;
             }
 
-            $parts[$k] = new Middlename($part);
+            $parts[$k] = $this->makeMiddlename($part);
         }
 
         return $parts;
+    }
+
+    /**
+     * wrap a raw middle-name token, rendering a known surname particle in its
+     * lowercase dictionary form ("Maria del Carmen" keeps "del" lowercase) so a
+     * compound-given-name particle matches how a surname prefix is normalized
+     */
+    private function makeMiddlename(string $part): Middlename
+    {
+        $key = $this->getKey($part);
+
+        if (array_key_exists($key, $this->prefixes)) {
+            return new MiddlenamePrefix($part, $this->prefixes[$key]);
+        }
+
+        return new Middlename($part);
     }
 }

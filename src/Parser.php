@@ -131,7 +131,7 @@ class Parser
             new SuffixMapper($this->getSuffixes(), false, 2),
             new LastnameMapper($this->getPrefixes(), true),
             new FirstnameMapper(),
-            new MiddlenameMapper(),
+            new MiddlenameMapper(false, $this->getPrefixes()),
         ]);
     }
 
@@ -143,7 +143,7 @@ class Parser
             new NicknameMapper($this->getNicknameDelimiters()),
             new InitialMapper($this->getMaxCombinedInitials(), true),
             new FirstnameMapper(),
-            new MiddlenameMapper(true),
+            new MiddlenameMapper(true, $this->getPrefixes()),
         ]);
     }
 
@@ -162,7 +162,7 @@ class Parser
                 new InitialMapper($this->getMaxCombinedInitials()),
                 new LastnameMapper($this->getPrefixes()),
                 new FirstnameMapper(),
-                new MiddlenameMapper(),
+                new MiddlenameMapper(false, $this->getPrefixes()),
             ]);
         }
 

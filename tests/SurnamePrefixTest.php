@@ -78,4 +78,27 @@ class SurnamePrefixTest extends TestCase
         $this->assertSame('Maria', $name->getFirstname());
         $this->assertSame('Ramirez', $name->getLastname());
     }
+
+    /**
+     * a particle in a compound given name renders in the same lowercase form as
+     * a surname particle, instead of being title-cased like a plain middle name
+     *
+     * @return array<string, array{string, string}>
+     */
+    public static function middleParticleProvider(): array
+    {
+        return [
+            // input, expected middle name
+            'spanish del'   => ['Maria del Carmen Fernandez', 'del Carmen'],
+            'spanish de los' => ['Maria de los Angeles Ramirez', 'de los Angeles'],
+        ];
+    }
+
+    #[DataProvider('middleParticleProvider')]
+    public function testMiddleNameParticleIsLowercased(string $input, string $middle): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($middle, $name->getMiddlename(), "middle name for '$input'");
+    }
 }
