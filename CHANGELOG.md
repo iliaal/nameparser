@@ -8,14 +8,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- Dutch and Spanish multi-particle surname prefixes (den, ten, los, las), so "Sanne van den Heuvel", "Corrie ten Boom", and "Juan de los Santos" keep the full surname instead of dropping the inner particle.
-- German particles and contractions (vom, zu, zum, zur) and French articles (le, des) in the default parser, so "Klaus vom Bruch", "Otto zu Guttenberg", "Marine le Pen", and "Jean des Pres" keep the full surname without opting into a language class.
+- Dutch and Spanish surname particles (den, ten, los, las), so "van den Heuvel" and "de los Santos" keep the full surname.
+- German (vom, zu, zum, zur) and French (le, des) particles in the default parser, so "vom Bruch" and "le Pen" parse without a language class.
 
 ### Fixed
 
-- Comma form "Last, First" no longer leaks a leading surname particle into the first name. "van der Berg, Johan" returns last name "van der Berg" and first name "Johan", not "Van Johan" / "der Berg". This affected every prefixed surname, including the single-particle "de Vries, Jan".
-- A multi-particle surname with no first name no longer leaks its leading particle into the first name, whether bare or after a salutation. "von der Heide" and "Dr. de la Cruz" return the whole surname, not first name "Von" / "De". A lone prefix word ("Mr. Della Smith") stays a first name, since that case is genuinely ambiguous.
-- A surname particle inside a compound given name now renders lowercase to match how a surname prefix is normalized. "Maria del Carmen Fernandez" returns middle name "del Carmen", not "Del Carmen".
+- Comma form "Last, First" no longer leaks a leading surname particle into the first name ("van der Berg, Johan" gives last "van der Berg", not first "Van Johan").
+- A multi-particle surname with no first name keeps its leading particle ("von der Heide", "Dr. de la Cruz"), instead of reading it as the first name.
+- A particle in a compound given name renders lowercase, matching surname prefixes ("Maria del Carmen" gives middle "del Carmen").
 
 ## [1.1.0] - 2026-06-24
 
