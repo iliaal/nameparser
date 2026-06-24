@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Dutch and Spanish multi-particle surname prefixes (den, ten, los, las), so "Sanne van den Heuvel", "Corrie ten Boom", and "Juan de los Santos" keep the full surname instead of dropping the inner particle.
+
+### Fixed
+
+- Comma form "Last, First" no longer leaks a leading surname particle into the first name. "van der Berg, Johan" returns last name "van der Berg" and first name "Johan", not "Van Johan" / "der Berg". This affected every prefixed surname, including the single-particle "de Vries, Jan".
+- A surname particle inside a compound given name now renders lowercase to match how a surname prefix is normalized. "Maria del Carmen Fernandez" returns middle name "del Carmen", not "Del Carmen".
+
 ## [1.1.0] - 2026-06-24
 
 ### Added
