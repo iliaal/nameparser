@@ -223,6 +223,13 @@ class LastnameMapper extends AbstractMapper
             return false;
         }
 
+        // in a surname-only segment (the part before the comma in "Last, First")
+        // there is no firstname to prioritise, so a leading prefix with nothing
+        // before it still belongs to the lastname rather than becoming a firstname
+        if ($this->matchSinglePart) {
+            return true;
+        }
+
         return $this->hasUnmappedPartsBefore($parts, $index);
     }
 
