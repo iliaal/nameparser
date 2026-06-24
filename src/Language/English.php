@@ -124,10 +124,12 @@ class English implements LanguageInterface
         'della' => 'della',
         'den' => 'den',
         'der' => 'der',
+        'des' => 'des',
         'di' => 'di',
         'du' => 'du',
         'la' => 'la',
         'las' => 'las',
+        'le' => 'le',
         'los' => 'los',
         'pietro' => 'pietro',
         'st' => 'st.',
@@ -136,7 +138,11 @@ class English implements LanguageInterface
         'van' => 'van',
         'vanden' => 'vanden',
         'vere' => 'vere',
+        'vom' => 'vom',
         'von' => 'von',
+        'zu' => 'zu',
+        'zum' => 'zum',
+        'zur' => 'zur',
     ];
 
     /**

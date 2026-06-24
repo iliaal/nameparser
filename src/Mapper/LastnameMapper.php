@@ -223,6 +223,14 @@ class LastnameMapper extends AbstractMapper
             return false;
         }
 
+        // a prefix immediately followed by another prefix is a leading particle
+        // of a multi-word surname ("von der Heide", "de la Cruz"), so it binds to
+        // the lastname even with no firstname before it (a bare or salutation-led
+        // surname) rather than leaking the particle into the firstname
+        if (($parts[$index + 1] ?? null) instanceof LastnamePrefix) {
+            return true;
+        }
+
         // in a surname-only segment (the part before the comma in "Last, First")
         // there is no firstname to prioritise, so a leading prefix with nothing
         // before it still belongs to the lastname rather than becoming a firstname

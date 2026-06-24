@@ -28,7 +28,11 @@ class German implements LanguageInterface
 
     public const array LASTNAME_PREFIXES = [
         'der' => 'der',
+        'vom' => 'vom',
         'von' => 'von',
+        'zu' => 'zu',
+        'zum' => 'zum',
+        'zur' => 'zur',
     ];
 
     /**

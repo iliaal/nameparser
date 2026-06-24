@@ -101,4 +101,74 @@ class SurnamePrefixTest extends TestCase
 
         $this->assertSame($middle, $name->getMiddlename(), "middle name for '$input'");
     }
+
+    /**
+     * A multi-particle surname with no firstname (bare or salutation-led) keeps
+     * the whole surname instead of leaking the leading particle into the first
+     * name. The discriminator is that the leading particle is followed by another
+     * prefix particle, so it is unambiguously mid-surname.
+     *
+     * @return array<string, array{string, string, string}>
+     */
+    public static function noFirstnameProvider(): array
+    {
+        return [
+            // input, expected first, expected last
+            'bare von der'      => ['von der Heide', '', 'von der Heide'],
+            'bare de la'        => ['de la Cruz', '', 'de la Cruz'],
+            'salutation von der' => ['Mr. von der Heide', '', 'von der Heide'],
+            'salutation de la'  => ['Dr. de la Cruz', '', 'de la Cruz'],
+            'salutation van der' => ['Mrs. van der Berg', '', 'van der Berg'],
+        ];
+    }
+
+    #[DataProvider('noFirstnameProvider')]
+    public function testNoFirstnameMultiParticleSurnameStaysWhole(string $input, string $first, string $last): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($first, $name->getFirstname(), "first name for '$input'");
+        $this->assertSame($last, $name->getLastname(), "last name for '$input'");
+    }
+
+    /**
+     * A single prefix word with no further particle stays the firstname: it is
+     * genuinely ambiguous (particle vs. given name like "Della"), so the no-
+     * firstname relaxation must not fire and pull it into the lastname.
+     */
+    public function testSinglePrefixWordAfterSalutationStaysFirstname(): void
+    {
+        $name = (new Parser())->parse('Mr. Della Smith');
+
+        $this->assertSame('Della', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+    }
+
+    /**
+     * German particles and contractions, and French articles, resolve under the
+     * default (English) parser without opting into a language class.
+     *
+     * @return array<string, array{string, string, string}>
+     */
+    public static function germanFrenchProvider(): array
+    {
+        return [
+            // input, expected first, expected last
+            'german vom'  => ['Klaus vom Bruch', 'Klaus', 'vom Bruch'],
+            'german zur'  => ['Ursula zur Muhlen', 'Ursula', 'zur Muhlen'],
+            'german zum'  => ['Karl zum Stein', 'Karl', 'zum Stein'],
+            'german zu'   => ['Otto zu Guttenberg', 'Otto', 'zu Guttenberg'],
+            'french le'   => ['Olivier le Brun', 'Olivier', 'le Brun'],
+            'french des'  => ['Jean des Pres', 'Jean', 'des Pres'],
+        ];
+    }
+
+    #[DataProvider('germanFrenchProvider')]
+    public function testGermanAndFrenchParticlesUnderDefaultParser(string $input, string $first, string $last): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($first, $name->getFirstname(), "first name for '$input'");
+        $this->assertSame($last, $name->getLastname(), "last name for '$input'");
+    }
 }
