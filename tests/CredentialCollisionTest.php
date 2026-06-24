@@ -68,6 +68,14 @@ class CredentialCollisionTest extends TestCase
             'surname Ba, two tokens'              => ['Wei Ba', 'Wei', 'Ba', ''],
             // uppercase BA is the degree, not a name
             'uppercase BA is a suffix'            => ['Jane Doe, BA', 'Jane', 'Doe', 'BA'],
+
+            // uniform-uppercase input: a two-letter given name must not be
+            // shredded into initials ("JO" -> J O). Casing carries no signal, so
+            // the token is kept as a name rather than split.
+            'all-caps two-letter given'           => ['JO ANDERSON', 'Jo', 'Anderson', ''],
+            'all-caps given Bo'                   => ['BO JACKSON', 'Bo', 'Jackson', ''],
+            'all-caps given Vi stays a name'      => ['VI NGUYEN', 'Vi', 'Nguyen', ''],
+            'all-caps comma two-letter given'     => ['NGUYEN, JO', 'Jo', 'Nguyen', ''],
         ];
     }
 

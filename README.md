@@ -53,6 +53,13 @@ ambiguous cases.
   credential no longer leaks into the first name.
 - **Unclosed nickname delimiter.** An opening `(` or quote with no matching
   close no longer swallows the surname (`"John (Bob Smith"` keeps `Smith`).
+- **All-caps short names.** Under uniform-uppercase input the caps cannot mark a
+  token as initials, so a two-letter given name is kept as a name instead of
+  being split (`"JO ANDERSON"` keeps `Jo`, not `J` + initial `O`). Mixed-case
+  combined initials still split (`"JM Walker"` to `J` `M` Walker).
+- **Comma middle names.** Everything after the first comma is the given-name
+  segment, so a comma-separated middle name is retained (`"Smith, John, Robert"`
+  keeps `Robert`) while trailing credentials are still stripped.
 
 ## Requirements
 

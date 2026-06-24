@@ -56,6 +56,15 @@ class Parser
     private ?array $salutations = null;
 
     /**
+     * memoized sub-parsers for the comma-separated segments; built once per
+     * instance so a batch of comma names does not re-merge the dictionaries
+     * on every row
+     */
+    private ?Parser $firstSegmentParser = null;
+
+    private ?Parser $secondSegmentParser = null;
+
+    /**
      * @param  array<int, LanguageInterface>  $languages
      */
     public function __construct(array $languages = [])
@@ -82,11 +91,13 @@ class Parser
         $segments = explode(',', $name);
 
         if (count($segments) > 1) {
-            // fold any segments after the second into the third so trailing
-            // comma-separated credentials ("Smith, John, MD, PhD") are not lost
-            $third = implode(' ', array_slice($segments, 2));
+            // everything after the first comma is the given-name segment: this
+            // keeps trailing comma-separated credentials ("Smith, John, MD, PhD")
+            // and a comma-separated middle name ("Smith, John, Robert") instead
+            // of dropping any third+ segment
+            $given = implode(' ', array_slice($segments, 1));
 
-            return $this->parseSplitName($segments[0], $segments[1], $third)->setSource($name);
+            return $this->parseSplitName($segments[0], $given)->setSource($name);
         }
 
         $parts = explode(' ', $name);
@@ -99,14 +110,15 @@ class Parser
     }
 
     /**
-     * handles split-parsing of comma-separated name parts
+     * handles split-parsing of comma-separated name parts: the surname segment
+     * before the first comma, and the given-name segment (first/middle names
+     * plus any trailing credentials) after it
      */
-    protected function parseSplitName(string $first, string $second, string $third): Name
+    protected function parseSplitName(string $surname, string $given): Name
     {
         $parts = array_merge(
-            $this->getFirstSegmentParser()->parse($first)->getParts(),
-            $this->getSecondSegmentParser()->parse($second)->getParts(),
-            $this->getThirdSegmentParser()->parse($third)->getParts()
+            $this->getFirstSegmentParser()->parse($surname)->getParts(),
+            $this->getSecondSegmentParser()->parse($given)->getParts(),
         );
 
         return new Name($parts);
@@ -114,44 +126,25 @@ class Parser
 
     protected function getFirstSegmentParser(): Parser
     {
-        $parser = new Parser();
-
-        $parser->setMappers([
+        return $this->firstSegmentParser ??= (new Parser())->setMappers([
             new SalutationMapper($this->getSalutations(), $this->getMaxSalutationIndex()),
             new SuffixMapper($this->getSuffixes(), false, 2),
             new LastnameMapper($this->getPrefixes(), true),
             new FirstnameMapper(),
             new MiddlenameMapper(),
         ]);
-
-        return $parser;
     }
 
     protected function getSecondSegmentParser(): Parser
     {
-        $parser = new Parser();
-
-        $parser->setMappers([
+        return $this->secondSegmentParser ??= (new Parser())->setMappers([
             new SalutationMapper($this->getSalutations(), $this->getMaxSalutationIndex()),
-            new SuffixMapper($this->getSuffixes(), true, 1),
+            new SuffixMapper($this->getSuffixes(), true, 0),
             new NicknameMapper($this->getNicknameDelimiters()),
             new InitialMapper($this->getMaxCombinedInitials(), true),
             new FirstnameMapper(),
             new MiddlenameMapper(true),
         ]);
-
-        return $parser;
-    }
-
-    protected function getThirdSegmentParser(): Parser
-    {
-        $parser = new Parser();
-
-        $parser->setMappers([
-            new SuffixMapper($this->getSuffixes(), true, 0),
-        ]);
-
-        return $parser;
     }
 
     /**

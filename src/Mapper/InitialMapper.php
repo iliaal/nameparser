@@ -26,6 +26,14 @@ class InitialMapper extends AbstractMapper
     {
         $last = count($parts) - 1;
 
+        // Splitting an all-uppercase token into separate initials ("JM" -> J M)
+        // reads the caps as "these are initials". Under uniform-uppercase input
+        // (legacy/registry data) caps carry no signal, so the same heuristic
+        // shreds two-letter given names ("JO" -> J O). Suppress the split there
+        // and keep the token as a name, mirroring the casing-as-signal policy of
+        // SuffixMapper.
+        $splitCombined = ! $this->isUniformUpperContext($parts);
+
         for ($k = 0; $k < count($parts); $k++) {
             $part = $parts[$k];
 
@@ -37,7 +45,7 @@ class InitialMapper extends AbstractMapper
                 continue;
             }
 
-            if (mb_strtoupper($part, 'UTF-8') === $part) {
+            if ($splitCombined && mb_strtoupper($part, 'UTF-8') === $part) {
                 $stripped = str_replace('.', '', $part);
                 $length = mb_strlen($stripped, 'UTF-8');
 
@@ -65,5 +73,35 @@ class InitialMapper extends AbstractMapper
         }
 
         return $length === 2 && str_ends_with($part, '.');
+    }
+
+    /**
+     * true when every cased token is uppercase and none carries a lowercase
+     * letter, i.e. the input casing gives no signal (all-caps registry data).
+     *
+     * @param  PartArray  $parts
+     */
+    private function isUniformUpperContext(array $parts): bool
+    {
+        $hasUpper = false;
+
+        foreach ($parts as $part) {
+            $value = $part instanceof AbstractPart ? $part->getValue() : $part;
+            $letters = preg_replace('/[^\p{L}]/u', '', $value) ?? '';
+
+            if ($letters === '') {
+                continue;
+            }
+
+            if (mb_strtoupper($letters, 'UTF-8') !== $letters) {
+                return false;
+            }
+
+            if ($letters !== mb_strtolower($letters, 'UTF-8')) {
+                $hasUpper = true;
+            }
+        }
+
+        return $hasUpper;
     }
 }

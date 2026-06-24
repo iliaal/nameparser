@@ -6,7 +6,7 @@ use Iliaal\NameParser\LanguageInterface;
 
 class German implements LanguageInterface
 {
-    public const SUFFIXES = [
+    public const array SUFFIXES = [
         '1.' => '1.',
         '2.' => '2.',
         '3.' => '3.',
@@ -19,14 +19,14 @@ class German implements LanguageInterface
         'v' => 'V',
     ];
 
-    public const SALUTATIONS = [
+    public const array SALUTATIONS = [
         'herr' => 'Herr',
         'hr' => 'Herr',
         'frau' => 'Frau',
         'fr' => 'Frau',
     ];
 
-    public const LASTNAME_PREFIXES = [
+    public const array LASTNAME_PREFIXES = [
         'der' => 'der',
         'von' => 'von',
     ];
