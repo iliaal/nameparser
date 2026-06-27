@@ -171,4 +171,65 @@ class SurnamePrefixTest extends TestCase
         $this->assertSame($first, $name->getFirstname(), "first name for '$input'");
         $this->assertSame($last, $name->getLastname(), "last name for '$input'");
     }
+
+    /**
+     * Portuguese/Brazilian contractions (do/dos/das), Filipino joined particles
+     * (dela/delos/delas), and the Italian article (lo) resolve onto the lastname
+     * under the default parser rather than orphaning the particle into the middle
+     * name. "do" collides with the DO credential but casing decides: lowercase is
+     * a particle, ALL-CAPS is the credential (covered separately below).
+     *
+     * @return array<string, array{string, string, string}>
+     */
+    public static function lusoFilipinoItalianProvider(): array
+    {
+        return [
+            // input, expected first, expected last
+            'portuguese dos' => ['Joao dos Santos', 'Joao', 'dos Santos'],
+            'portuguese do'  => ['Ana do Carmo', 'Ana', 'do Carmo'],
+            'portuguese das' => ['Pedro das Neves', 'Pedro', 'das Neves'],
+            'filipino dela'  => ['Maria dela Cruz', 'Maria', 'dela Cruz'],
+            'filipino delos' => ['Jose delos Reyes', 'Jose', 'delos Reyes'],
+            'filipino delas' => ['Ramon delas Alas', 'Ramon', 'delas Alas'],
+            'italian lo'     => ['Giovanni lo Russo', 'Giovanni', 'lo Russo'],
+        ];
+    }
+
+    #[DataProvider('lusoFilipinoItalianProvider')]
+    public function testLusoFilipinoItalianParticlesBindToLastname(string $input, string $first, string $last): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($first, $name->getFirstname(), "first name for '$input'");
+        $this->assertSame($last, $name->getLastname(), "last name for '$input'");
+    }
+
+    /**
+     * The new particles double as standalone surnames (Vietnamese Do, Chinese Lo,
+     * Indian Das). With no token after them they must not be consumed as a prefix:
+     * a prefix only binds when followed by a lastname part. The DO credential still
+     * strips because ALL-CAPS reads as a credential, lowercase as a particle.
+     *
+     * @return array<string, array{string, string, string, string}>
+     */
+    public static function standaloneSurnameProvider(): array
+    {
+        return [
+            // input, expected first, expected last, expected suffix
+            'vietnamese do'    => ['Jane Do', 'Jane', 'Do', ''],
+            'chinese lo'       => ['David Lo', 'David', 'Lo', ''],
+            'comma form lo'    => ['Lo, David', 'David', 'Lo', ''],
+            'do credential'    => ['Jane Doe, DO', 'Jane', 'Doe', 'DO'],
+        ];
+    }
+
+    #[DataProvider('standaloneSurnameProvider')]
+    public function testStandaloneSurnamesAreNotConsumedAsPrefix(string $input, string $first, string $last, string $suffix): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($first, $name->getFirstname(), "first name for '$input'");
+        $this->assertSame($last, $name->getLastname(), "last name for '$input'");
+        $this->assertSame($suffix, $name->getSuffix(), "suffix for '$input'");
+    }
 }
