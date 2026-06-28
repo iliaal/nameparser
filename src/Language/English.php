@@ -96,6 +96,7 @@ class English implements LanguageInterface
     ];
 
     public const array SALUTATIONS = [
+        'dhr' => 'Dhr.',
         'dr' => 'Dr.',
         'fr' => 'Fr.',
         'hon' => 'Hon.',
@@ -103,12 +104,14 @@ class English implements LanguageInterface
         'the honorable' => 'Hon.',
         'madam' => 'Madam',
         'master' => 'Mr.',
+        'mevr' => 'Mevr.',
         'miss' => 'Miss',
         'missus' => 'Mrs.',
         'mister' => 'Mr.',
         'mr' => 'Mr.',
         'mrs' => 'Mrs.',
         'ms' => 'Ms.',
+        'mw' => 'Mevr.',
         'mx' => 'Mx.',
         'rev' => 'Rev.',
         'sir' => 'Sir',

@@ -214,6 +214,30 @@ class ParserTest extends TestCase
                 ],
             ],
             [
+                'Dhr. Jan de Vries',
+                [
+                    'salutation' => 'Dhr.',
+                    'firstname' => 'Jan',
+                    'lastname' => 'de Vries',
+                ],
+            ],
+            [
+                'Mevr. Anna Bakker',
+                [
+                    'salutation' => 'Mevr.',
+                    'firstname' => 'Anna',
+                    'lastname' => 'Bakker',
+                ],
+            ],
+            [
+                'Mw. Anna Bakker',
+                [
+                    'salutation' => 'Mevr.',
+                    'firstname' => 'Anna',
+                    'lastname' => 'Bakker',
+                ],
+            ],
+            [
                 'Prof. Tyson J. Hirthe',
                 [
                     'salutation' => 'Prof.',
