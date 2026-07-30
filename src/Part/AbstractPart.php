@@ -71,18 +71,13 @@ abstract class AbstractPart
 
         $this->camelcaseCacheWord = $word;
 
-        // the mixed-case pattern backtracks quadratically without the PCRE JIT
-        // when a long run fails at every start position (single-case and
-        // Title-case shapes alike), so it only runs on tokens short enough for
-        // quadratic to be irrelevant — no real name comes close to the bound —
-        // and only when both letter cases are present (it cannot match
-        // otherwise). Oversized tokens go straight to the title-casing path.
         $caseShape = preg_replace('/\p{M}/u', '', $word) ?? $word;
         $isMixedCase = strlen($caseShape) <= 1024
             && $caseShape !== mb_strtoupper($caseShape, 'UTF-8')
-            && $caseShape !== mb_strtolower($caseShape, 'UTF-8');
+            && $caseShape !== mb_strtolower($caseShape, 'UTF-8')
+            && $this->hasInternalCaseTransition($caseShape);
 
-        if ($isMixedCase && preg_match('/\p{L}(\p{Lu}*\p{Ll}\p{Ll}*\p{Lu}|\p{Ll}*\p{Lu}\p{Lu}*\p{Ll})\p{L}*/u', $caseShape)) {
+        if ($isMixedCase) {
             return $this->camelcaseCache = $word;
         }
 
@@ -93,6 +88,46 @@ abstract class AbstractPart
 
         // preg_replace_callback returns null on regex error; fall back to the input.
         return $this->camelcaseCache = preg_replace_callback('/[\p{L}\p{M}0-9]+/ui', $this->camelcaseReplace(...), $word) ?? $word;
+    }
+
+    private function hasInternalCaseTransition(string $word): bool
+    {
+        $matches = [];
+        if (preg_match_all('/\p{L}+/u', $word, $matches) === false) {
+            return false;
+        }
+
+        foreach ($matches[0] as $run) {
+            $caseRuns = [];
+            if (preg_match_all('/\p{Lu}+|\p{Ll}+|\p{L}/u', $run, $caseRuns) === false) {
+                continue;
+            }
+
+            $consumed = 0;
+            $previousCase = null;
+
+            foreach ($caseRuns[0] as $caseRun) {
+                $upper = mb_strtoupper($caseRun, 'UTF-8') === $caseRun
+                    && mb_strtolower($caseRun, 'UTF-8') !== $caseRun;
+                $lower = mb_strtolower($caseRun, 'UTF-8') === $caseRun
+                    && mb_strtoupper($caseRun, 'UTF-8') !== $caseRun;
+                $currentCase = $upper ? true : ($lower ? false : null);
+
+                if (
+                    $consumed >= 2
+                    && $previousCase !== null
+                    && $currentCase !== null
+                    && $previousCase !== $currentCase
+                ) {
+                    return true;
+                }
+
+                $consumed += mb_strlen($caseRun, 'UTF-8');
+                $previousCase = $currentCase;
+            }
+        }
+
+        return false;
     }
 
     /**

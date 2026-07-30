@@ -277,8 +277,8 @@ class Name
      * a single prefix field per contact: "Mr. and Mrs. Brad Smith" gives
      * ['Mr.', 'Mrs.']. Stacked titles for one person stay together
      * ("Rev. Dr John Doe" gives ['Rev. Dr.']), and a name with no honorific
-     * gives an empty list, so [0] can be indexed without checking isJoint()
-     * first. Joining the entries with " and " reproduces getSalutation().
+     * gives an empty list, so read the first entry as `[0] ?? ''`. Joining the
+     * entries with " and " reproduces getSalutation().
      *
      * @return list<string>
      */
@@ -384,13 +384,7 @@ class Name
      */
     public function isJoint(): bool
     {
-        foreach ($this->parts as $part) {
-            if ($part instanceof SalutationConnector) {
-                return true;
-            }
-        }
-
-        return false;
+        return count($this->getSalutationGroups()) >= 2;
     }
 
     /**

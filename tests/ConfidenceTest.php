@@ -152,6 +152,13 @@ class ConfidenceTest extends TestCase
         Confidence::assess(str_repeat('A ', self::MAX_INPUT_TOKENS) . 'A');
     }
 
+    public function testInvalidUtf8StillRejectsInputOverTokenBudget(): void
+    {
+        $this->expectException(\LengthException::class);
+
+        Confidence::assess(str_repeat('A ', self::MAX_INPUT_TOKENS) . "\xFF");
+    }
+
     public function testSuppliedTokensDoNotBypassByteBudget(): void
     {
         $this->expectException(\LengthException::class);

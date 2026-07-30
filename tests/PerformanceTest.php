@@ -3,6 +3,7 @@
 namespace Tests\Iliaal\NameParser;
 
 use Iliaal\NameParser\Parser;
+use Iliaal\NameParser\Part\Lastname;
 use PHPUnit\Framework\TestCase;
 
 class PerformanceTest extends TestCase
@@ -65,6 +66,54 @@ class PerformanceTest extends TestCase
         (new Parser())->parse($input);
 
         $this->assertLessThan(64 * 1024 * 1024, memory_get_peak_usage(true) - $baseline);
+    }
+
+    public function testMaximumSizeInteriorTokenUsesBoundedWorkingMemory(): void
+    {
+        $input = 'John ' . str_repeat('A', self::MAX_INPUT_BYTES - 11) . ' Smith';
+        memory_reset_peak_usage();
+        $baseline = memory_get_usage(true);
+
+        (new Parser())->parse($input);
+
+        $this->assertLessThan(16 * 1024 * 1024, memory_get_peak_usage(true) - $baseline);
+    }
+
+    public function testMaximumCamelcaseScanRemainsFastWithoutPcreJit(): void
+    {
+        $jit = ini_get('pcre.jit');
+        ini_set('pcre.jit', '0');
+
+        try {
+            $started = hrtime(true);
+            $word = 'A' . str_repeat('a', 1023);
+            for ($i = 0; $i < 250; ++$i) {
+                (new Lastname($word))->normalize();
+            }
+            $elapsed = (hrtime(true) - $started) / 1_000_000_000;
+        } finally {
+            if ($jit !== false) {
+                ini_set('pcre.jit', $jit);
+            }
+        }
+
+        $this->assertLessThan(0.25, $elapsed);
+    }
+
+    public function testMaximumCommonPrefixDelimiterScanRemainsBounded(): void
+    {
+        $delimiters = [];
+        for ($i = 0; $i < 32; ++$i) {
+            $delimiter = str_repeat('a', 62) . sprintf('%02d', $i);
+            $delimiters[$delimiter] = $delimiter;
+        }
+
+        $parser = (new Parser())->setNicknameDelimiters($delimiters);
+        $started = hrtime(true);
+        $parser->parse(str_repeat('a', 4094) . ',X');
+        $elapsed = (hrtime(true) - $started) / 1_000_000_000;
+
+        $this->assertLessThan(0.15, $elapsed);
     }
 
     public function testRejectsInputOverByteBudget(): void

@@ -173,7 +173,7 @@ class LastnameMapper extends AbstractMapper
             return false;
         }
 
-        $length = Text::graphemeLength($lastPart->getValue());
+        $length = Text::graphemeLengthUpTo($lastPart->getValue(), 3);
 
         return $length === 1 || $length >= 3;
     }

@@ -106,9 +106,29 @@ final class Text
         return $matches[0];
     }
 
-    public static function graphemeLength(string $word): int
+    public static function graphemeLengthUpTo(string $word, int $limit): int
     {
-        return count(self::graphemes($word));
+        if ($word === '' || $limit < 1) {
+            return 0;
+        }
+
+        $length = 0;
+        $offset = 0;
+        $bytes = strlen($word);
+
+        while ($offset < $bytes && $length < $limit) {
+            $match = [];
+            $matched = preg_match('/\G\X/u', $word, $match, 0, $offset);
+
+            if ($matched !== 1) {
+                return min($limit, $bytes);
+            }
+
+            $offset += strlen($match[0]);
+            ++$length;
+        }
+
+        return $length;
     }
 
     /**
@@ -213,6 +233,6 @@ final class Text
             return false;
         }
 
-        return self::graphemeLength(self::letters($token)) >= 2;
+        return self::graphemeLengthUpTo(self::letters($token), 2) >= 2;
     }
 }

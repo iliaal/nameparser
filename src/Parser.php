@@ -1012,19 +1012,32 @@ class Parser
         }
         usort($openers, static fn(array $a, array $b): int => count($b[0]) <=> count($a[0]));
 
+        /** @var array<string, list<array{list<string>, string, bool}>> $openersByFirst */
+        $openersByFirst = [];
+        foreach ($openers as $opener) {
+            $openersByFirst[$opener[0][0]][] = $opener;
+        }
+
         // token-end offsets per symmetric delimiter, so each opener's closer
         // lookahead is a bounded list walk instead of a rescan
         /** @var array<string, list<int>> $symmetricEnds */
         $symmetricEnds = [];
+        $tokenEnds = [];
+        for ($i = 1; $i <= $total; ++$i) {
+            if ($this->isStructuralTokenBoundary($chars[$i] ?? null)) {
+                $tokenEnds[] = $i;
+            }
+        }
+
         foreach (array_keys($symmetric) as $quote) {
             $quote = (string) $quote;
             $quoteChars = mb_str_split($quote, 1, 'UTF-8');
             $len = count($quoteChars);
 
-            for ($i = 0; $i + $len <= $total; $i++) {
-                if ($this->charsMatchAt($chars, $i, $quoteChars)
-                    && $this->isStructuralTokenBoundary($chars[$i + $len] ?? null)) {
-                    $symmetricEnds[$quote][] = $i;
+            foreach ($tokenEnds as $end) {
+                $start = $end - $len;
+                if ($start >= 0 && $this->charsMatchAt($chars, $start, $quoteChars)) {
+                    $symmetricEnds[$quote][] = $start;
                 }
             }
         }
@@ -1062,7 +1075,14 @@ class Parser
                 }
             }
 
-            foreach ($openers as [$openChars, $close, $isSymmetric]) {
+            foreach ($openersByFirst[$chars[$i]] ?? [] as [$openChars, $close, $isSymmetric]) {
+                if (
+                    $isSymmetric
+                    && ! $this->isStructuralTokenBoundary($chars[$i - 1] ?? null)
+                ) {
+                    continue;
+                }
+
                 if (! $this->charsMatchAt($chars, $i, $openChars)) {
                     continue;
                 }
@@ -1070,7 +1090,6 @@ class Parser
                 $openLen = count($openChars);
 
                 if ($isSymmetric) {
-                    $atTokenStart = $this->isStructuralTokenBoundary($chars[$i - 1] ?? null);
                     $hasCloser = false;
                     foreach ($symmetricEnds[$close] ?? [] as $end) {
                         if ($end >= $i + $openLen) {
@@ -1080,7 +1099,7 @@ class Parser
                         }
                     }
 
-                    if (! $atTokenStart || ! $hasCloser || in_array($close, $openQuotes, true)) {
+                    if (! $hasCloser || in_array($close, $openQuotes, true)) {
                         continue;
                     }
 
@@ -1330,10 +1349,8 @@ class Parser
     }
 
     /**
-     * @return array<string, string>
-     */
-    /**
-     * effective nickname delimiter pairs (defaults when none were set)
+     * configured nickname delimiter pairs (defaults when none were set);
+     * parsing ignores invalid or over-limit entries
      *
      * @return array<string, string>
      */

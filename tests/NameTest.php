@@ -12,6 +12,7 @@ use Iliaal\NameParser\Part\LastnamePrefix;
 use Iliaal\NameParser\Part\Middlename;
 use Iliaal\NameParser\Part\Nickname;
 use Iliaal\NameParser\Part\Salutation;
+use Iliaal\NameParser\Part\SalutationConnector;
 use Iliaal\NameParser\Part\Suffix;
 use PHPUnit\Framework\TestCase;
 
@@ -93,6 +94,19 @@ class NameTest extends TestCase
         $name = (new Name([new Firstname('John')]))->setSource('john doe');
 
         $this->assertSame('john doe', $name->getSource());
+    }
+
+    public function testUnmatchedSalutationConnectorDoesNotReportJointName(): void
+    {
+        $name = new Name([
+            new SalutationConnector('and', 'and'),
+            new Salutation('Mrs', 'Mrs.'),
+            new Lastname('Smith'),
+        ]);
+
+        $this->assertFalse($name->isJoint());
+        $this->assertSame(['Mrs.'], $name->getSalutations());
+        $this->assertNull($name->getPartner());
     }
 
     public function testGetGivenNameShouldReturnGivenNameInGivenOrder(): void

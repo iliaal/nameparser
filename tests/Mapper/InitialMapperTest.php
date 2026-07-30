@@ -144,6 +144,20 @@ class InitialMapperTest extends AbstractMapperTestCase
             [
                 'input' => [
                     'Durand',
+                    "E\u{0301}",
+                ],
+                'expectation' => [
+                    'Durand',
+                    new Initial("E\u{0301}"),
+                ],
+                'arguments' => [
+                    2,
+                    true,
+                ],
+            ],
+            [
+                'input' => [
+                    'Durand',
                     "E\u{0301}.",
                 ],
                 'expectation' => [

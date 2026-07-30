@@ -117,6 +117,14 @@ class JointSalutationTest extends TestCase
                 'salutation' => 'Mr.', 'firstname' => 'Andrew',
                 'middlename' => 'Sally', 'lastname' => 'Smith',
             ]],
+            'two givens with multi-word title' => ['Mr. Andrew and His Honour Sally Smith', [
+                'salutation' => 'Mr.', 'firstname' => 'Andrew',
+                'middlename' => 'Sally', 'lastname' => 'Smith',
+            ]],
+            'two givens with abbreviated multi-word title' => ['Mr. Andrew and Rt Hon Sally Smith', [
+                'salutation' => 'Mr.', 'firstname' => 'Andrew',
+                'middlename' => 'Sally', 'lastname' => 'Smith',
+            ]],
             'two givens no titles' => ['Andrew and Sally Smith', [
                 'firstname' => 'Andrew', 'middlename' => 'Sally', 'lastname' => 'Smith',
             ]],
@@ -146,6 +154,21 @@ class JointSalutationTest extends TestCase
         }
 
         $this->assertSame(['and', 'Mrs'], $ignored);
+    }
+
+    public function testEveryWordOfAnUnattributedTitleIsIgnored(): void
+    {
+        $name = (new Parser())->parse('Mr. Andrew and His Honour Sally Smith');
+
+        $ignored = [];
+
+        foreach ($name->getParts() as $part) {
+            if ($part instanceof Ignored) {
+                $ignored[] = $part->getValue();
+            }
+        }
+
+        $this->assertSame(['and', 'His', 'Honour'], $ignored);
     }
 
     /**

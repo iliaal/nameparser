@@ -36,9 +36,10 @@ ambiguous cases.
 
 - **Casing as a signal.** An ambiguous token (`Do`, `Vi`, `Ma`, roman numerals,
   two-letter credentials) is treated as a credential only when written ALL-CAPS
-  (`DO`, `VI`); Title- or lower-case keeps it as a name part. People write
-  credentials in caps and names in title case, so the original casing carries
-  the signal that lowercasing discarded.
+  (`DO`, `VI`); Title- or lower-case keeps it as a name part, and normal name
+  casing turns lowercase `vi` into `Vi` in the output. People write credentials
+  in caps and names in title case, so the original casing carries the signal
+  that lowercasing discarded.
 - **Terminal-token guard.** A lone name-colliding token in a comma given-name
   segment is kept as a name rather than emptied into a credential, unless its
   casing reads as a credential.
@@ -140,8 +141,10 @@ $name->getLastname();     // "Smith"
 splits it one entry per person, for a contact record that holds a single prefix:
 
 ```php
-$prefix  = $name->getSalutations()[0] ?? '';                              // "Mr."
-$partner = $name->getSalutations()[1] . ' ' . $name->getLastname();       // "Mrs. Smith"
+$salutations  = $name->getSalutations();
+$prefix       = $salutations[0] ?? '';                                    // "Mr."
+$partnerTitle = $salutations[1] ?? '';                                    // "Mrs."
+$partner      = $partnerTitle === '' ? '' : $partnerTitle . ' ' . $name->getLastname();
 ```
 
 The partner shares the surname, not the given name. Stacked titles address one
@@ -170,7 +173,8 @@ honorific for the connector to attach to and reports `isJoint() === false`.
 Two people each given a name is the other undetected form:
 
 ```php
-$parser->parse('Mr. Andrew and Mrs Sally Smith')->toArray();
+$name = $parser->parse('Mr. Andrew and Mrs Sally Smith');
+$name->toArray();
 // salutation "Mr.", firstname "Andrew", middlename "Sally", lastname "Smith"
 ```
 
@@ -223,10 +227,11 @@ dictionaries with `Confidence::assess($string, $parser->getSuffixes(),
 $parser->getSalutations())`; standalone tokenization still splits on whitespace
 and commas.
 
-> **All-caps limitation.** Disambiguation keys off casing, so uniform-case input
-> (all-caps legacy and registry data, or all-lowercase) carries no signal: an
-> ambiguous trailing token reads as a credential by default. The confidence pass
-> flags these when the token is name-leaning (`Do`, `Vi`, `Ma`, `Ba`, `Lac`) or a
+> **Uniform-case limitation.** Disambiguation keys off casing, so both all-caps
+> legacy data and all-lowercase input are ambiguous to the confidence pass. The
+> parser treats an ambiguous ALL-CAPS trailing token as a credential, but keeps
+> the lowercase form as a name part and normalizes its casing. Confidence flags
+> either form when the token is name-leaning (`Do`, `Vi`, `Ma`, `Ba`, `Lac`) or a
 > Census surname collision (`II`, `III`, `IV`, `MBA`). Clean credentials that are
 > not also names (`RN`, `PT`, `OD`, and other roman numerals such as `VII`) are
 > left unflagged to keep review volume manageable on all-caps datasets.
@@ -264,8 +269,8 @@ Fluent setters on `Parser`:
 - `setWhitespace` and `setMaxSalutationIndex` tune collapse and mapper gates.
 - `setMaxCombinedInitials($limit)` accepts 0 through 64. Values outside that
   range throw `InvalidArgumentException`; combined-token expansion is also
-  capped at 131,072 output parts per parse and throws `LengthException` above
-  that aggregate ceiling.
+  capped at 131,072 expanded initial parts per parse and throws
+  `LengthException` above that expansion ceiling.
 - `setMappers([...])` replaces the single-segment (Western, no-comma) pipeline
   only. Comma forms and `setSurnameFirst(true)` use dedicated sub-parsers that
   always build their own mapper lists from the language dictionaries. Pass `[]`

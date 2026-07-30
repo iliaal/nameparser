@@ -102,7 +102,7 @@ class InitialMapper extends AbstractMapper
 
             if ($splitCombined && mb_strtoupper($part, 'UTF-8') === $part) {
                 $stripped = str_replace('.', '', $part);
-                $length = Text::graphemeLength($stripped);
+                $length = Text::graphemeLengthUpTo($stripped, $this->combinedMax + 1);
 
                 // caseless scripts (CJK, Hebrew) are trivially "uppercase", so the
                 // gate above passes for a 2-char given name like "李明". Only split
@@ -146,12 +146,12 @@ class InitialMapper extends AbstractMapper
     {
         // a caseless single character ("李") is a whole name, not an initial; an
         // initial is a genuinely cased letter ("É", "J"). Casing is the signal.
-        if (Text::graphemeLength($part) === 1) {
+        if (Text::graphemeLengthUpTo($part, 2) === 1) {
             return Text::isCased($part);
         }
 
         return str_ends_with($part, '.')
-            && Text::graphemeLength(substr($part, 0, -1)) === 1
+            && Text::graphemeLengthUpTo(substr($part, 0, -1), 2) === 1
             && Text::isCased($part);
     }
 }

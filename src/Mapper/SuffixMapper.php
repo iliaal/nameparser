@@ -182,6 +182,10 @@ class SuffixMapper extends AbstractMapper
             $mappedSuffix = true;
         }
 
+        if ($suffixIndexes === []) {
+            $candidateIndexes = [];
+        }
+
         $suffixIndexes = array_merge($leadingSuffixIndexes, $suffixIndexes);
 
         // candidates ride along only when a real dictionary suffix anchored the
@@ -401,7 +405,7 @@ class SuffixMapper extends AbstractMapper
 
         $letters = Text::letters($previous);
 
-        return Text::graphemeLength($letters) === 1;
+        return Text::graphemeLengthUpTo($letters, 2) === 1;
     }
 
     protected function isUpperCase(string $part): bool

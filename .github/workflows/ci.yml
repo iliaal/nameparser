@@ -48,10 +48,7 @@ jobs:
           coverage: none
           tools: composer:v2
       - uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda # 4.0.0
-      - name: Enforce empty PHPStan baseline
-        run: |
-          php -r '$actual = preg_replace("/\s+/", "", file_get_contents("phpstan-baseline.neon")); if ($actual !== "parameters:ignoreErrors:[]") { fwrite(STDERR, "phpstan-baseline.neon must remain empty\n"); exit(1); }'
-      - run: vendor/bin/phpstan analyse --no-progress
+      - run: composer analyse
 
   code-style:
     name: Code Style

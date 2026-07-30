@@ -204,8 +204,15 @@ class SalutationMapper extends AbstractMapper
                 continue;
             }
 
-            if ($afterConnector && $this->isUnattributedTitle($parts, $index)) {
-                $parts[$index] = new Ignored($part);
+            $titleLength = $afterConnector
+                ? $this->getUnattributedTitleLength($parts, $index)
+                : 0;
+
+            for ($offset = 0; $offset < $titleLength; $offset++) {
+                $titlePart = $parts[$index + $offset] ?? null;
+                if (is_string($titlePart)) {
+                    $parts[$index + $offset] = new Ignored($titlePart);
+                }
             }
 
             $afterConnector = false;
@@ -221,15 +228,17 @@ class SalutationMapper extends AbstractMapper
      *
      * @param  PartArray  $parts
      */
-    private function isUnattributedTitle(array $parts, int $index): bool
+    private function getUnattributedTitleLength(array $parts, int $index): int
     {
-        [$part] = $this->matchAt($parts, $index);
+        [$part, $consumed] = $this->matchAt($parts, $index);
 
         $current = $parts[$index];
 
         return $part instanceof Salutation
             && is_string($current)
-            && ! isset(self::NAME_COLLIDING_KEYS[$this->getKey($current)]);
+            && ! isset(self::NAME_COLLIDING_KEYS[$this->getKey($current)])
+                ? $consumed
+                : 0;
     }
 
     /**

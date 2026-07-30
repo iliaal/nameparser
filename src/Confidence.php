@@ -34,6 +34,16 @@ class Confidence
         }
 
         if (! mb_check_encoding($original, 'UTF-8')) {
+            if ($tokens === null) {
+                $tokens = preg_split(
+                    '/[\s,]+/',
+                    trim($original),
+                    Text::MAX_INPUT_TOKENS + 1,
+                    PREG_SPLIT_NO_EMPTY,
+                ) ?: [];
+                Text::assertInputTokenCount(count($tokens));
+            }
+
             return ['ambiguous' => true, 'notes' => ['input is not valid UTF-8']];
         }
 

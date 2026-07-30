@@ -30,7 +30,11 @@
         }
     },
     "scripts": {
-        "analyse": "phpstan analyse",
+        "analyse": [
+            "@check:phpstan-baseline",
+            "phpstan analyse"
+        ],
+        "check:phpstan-baseline": "php -r '$actual = preg_replace(\"/\\\\s+/\", \"\", file_get_contents(\"phpstan-baseline.neon\")); if ($actual !== \"parameters:ignoreErrors:[]\") { fwrite(STDERR, \"phpstan-baseline.neon must remain empty\\n\"); exit(1); }'",
         "check:readme": "php -r \"exit(substr_count(file_get_contents('README.md'), \\\"—\\\") === 0 ? 0 : 1);\"",
         "lint": "php-cs-fixer fix --dry-run --diff",
         "lint:fix": "php-cs-fixer fix",

@@ -201,6 +201,30 @@ class CredentialCollisionTest extends TestCase
             'comma credential before given'    => ['Smith, MD, John', 'John', '', 'Smith', '', 'MD'],
             'comma ambiguous credential keeps middle' => ['Smith, John, DO, Robert', 'John', 'Robert', 'Smith', '', 'DO'],
             'leading credential run in given'  => ['Smith, MD John', 'John', '', 'Smith', '', 'MD'],
+            'leading credential does not anchor remote uppercase name' => [
+                'Smith, MD John PAUL',
+                'John',
+                'Paul',
+                'Smith',
+                '',
+                'MD',
+            ],
+            'leading credential does not anchor multiple uppercase names' => [
+                'Smith, MD John PAUL GEORGE',
+                'John',
+                'Paul George',
+                'Smith',
+                '',
+                'MD',
+            ],
+            'trailing credential anchors its contiguous unknown run' => [
+                'Smith, MD John PAUL RN',
+                'John',
+                '',
+                'Smith',
+                '',
+                'MD PAUL RN',
+            ],
             // combined initials behind a preserved name token are not a
             // stray credential; only the contiguous tail run qualifies
             'all-caps initials behind a name token stay initials' => ['John Paul JM Smith MD', 'John', 'Paul', 'Smith', 'J M', 'MD'],

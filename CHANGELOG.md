@@ -22,12 +22,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `setMaxCombinedInitials()` now accepts only 0 through 64 and combined-token expansion is capped at 131,072 output parts per parse, preventing hostile configuration from creating an unbounded part list. Nickname delimiter configuration is similarly bounded to 32 pairs of at most 64 bytes each.
 - Large runs of combined initials, repeated salutations, and surname-first honorifics now parse in linear time instead of repeatedly reindexing the token array.
 - Comma-heavy malformed input no longer retains duplicate segment projections, cutting peak working memory for a 1 MB row from hundreds of megabytes to a linear bound.
+- Maximum-size interior tokens no longer materialize an array containing every grapheme, so a valid 1 MB row stays within a 32 MB PHP memory limit.
+- Camelcase detection remains linear without PCRE JIT at the 1,024-byte boundary, and maximum-size common-prefix nickname-delimiter configurations no longer multiply the structural-comma scan.
 - A pure all-caps unknown-candidate segment with no prior dictionary anchor is kept as a name rather than promoted to a suffix when a later credential appears (`Smith, JOHN, MD` → first `John`, suffix `MD`). Unknown candidates still ride after a known credential (`MD, FACS`) and peel from a mixed segment onto a later dictionary segment (`John FACS, MD`). Prefer `Smith, MD, FACS` when the unknown stands alone before the known credential.
 - `getConfidence()` now uses the parser's configured suffixes, salutations, and token boundaries. Standalone `Confidence::assess($string)` retains English defaults.
 
 ### Fixed
 
 - A conjunction the honorific could not absorb is no longer title-cased into a name part, so `Andrew and Sally Smith` reports the middle name `Sally` instead of `And Sally`, and `Mr. and Brad Smith` reports the first name `Brad` instead of `And`. A title directly after such a conjunction addresses a second person, so it is dropped from the getters too (`Mr. Andrew and Mrs Sally Smith` no longer carries `Mrs` as a middle name). Both are marked as `Part\Ignored`, which no getter exports, so the text is still reachable through `Name::getParts()`. The parser still does not identify the second person: `isJoint()` and `getPartner()` need a title on both sides of the conjunction, and the second given name stays where it lands.
+- Every word of an unattributed multi-word title is ignored after a conjunction, so `Mr. Andrew and His Honour Sally Smith` keeps only `Sally` as the middle name.
+- A leading credential in a comma given-name segment no longer authorizes a later uppercase given name as an unknown credential (`Smith, MD John PAUL` keeps middle name `Paul` and suffix `MD`).
+- `Name::isJoint()` now requires two non-empty salutation groups rather than reporting true for a manually constructed orphan connector.
+- Invalid-UTF-8 confidence input now enforces the same 65,536-token ceiling before returning its ambiguity note.
 - A two-letter surname particle written in caps inside mixed-case input is no longer shredded into initials, so `Jean DE Vries` keeps `de Vries` and `Mary LE Blanc` keeps `le Blanc` instead of reporting initials `D E` and `L E` with the particle dropped. Three-letter particles were never affected (`VON` exceeds the combined-initial limit).
 - Decomposed Unicode accents stay attached to their base letter during casing, initial splitting, and short-surname detection.
 - Credentials before a trailing nickname are retained in both Western and comma forms.
@@ -63,7 +69,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### For contributors
 
-- CI now enforces the README punctuation rule, rejects empty PHPUnit suites and deprecations, and no longer carries the obsolete mbstring-absence mock dependency.
+- CI now enforces the README punctuation rule, rejects empty PHPUnit suites, deprecations, notices, skipped tests, and incomplete tests, and no longer carries the obsolete mbstring-absence mock dependency.
+- `composer analyse` enforces the empty PHPStan baseline before running level 9 analysis, matching CI.
 
 ## [1.3.0] - 2026-07-10
 
