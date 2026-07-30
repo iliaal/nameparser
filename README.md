@@ -218,6 +218,11 @@ if ($result['ambiguous']) {
 an advisory pass you opt into. A mixed-case input like `"Nguyen, Vi"` stays
 unflagged; the title-case `Vi` resolves to the given name.
 
+A suffix, nickname, or empty trailing comma does not settle a two-part
+salutation collision: `"Lord Ashcroft MD"`, `"Lord Ashcroft (Bob)"`, and
+`"Lord Ashcroft,"` are still flagged. A structural comma with name-bearing
+content on both sides, as in `"Lord, Ashcroft"`, resolves it.
+
 For a non-default language set, standalone `Confidence::assess($string)` still
 uses the English salutation scope and the full ambiguous-suffix table.
 `Name::getConfidence()` uses the parser's configured suffixes, salutations, and
@@ -281,11 +286,15 @@ Fluent setters on `Parser`:
 `parse()` accepts at most 1,048,576 input bytes and 65,536 non-empty tokens.
 It throws `LengthException` before comma segmentation or mapper allocation when
 either limit is exceeded. These bounds keep malformed import rows from
-exhausting a PHP worker while retaining batch-scale inputs.
+exhausting a PHP worker while retaining batch-scale inputs. Consecutive empty
+comma segments are coalesced during structural splitting, so a delimiter-only
+row at the byte limit does not allocate one array entry per comma.
 
 Standalone `Confidence::assess($string)` applies the same byte and token limits.
 `Name::getConfidence()` reuses the tokens from the already validated parse
-instead of tokenizing the source again.
+instead of tokenizing the source again. Explicitly supplied token arrays are
+also limited to 65,536 entries and 1,048,576 aggregate token bytes; supplying
+tokens does not bypass validation of the original string.
 
 Some inputs have no structural signal. A comma followed only by credentials can
 mean full name plus credentials (`Jane Doe, MD`) or surname plus credentials

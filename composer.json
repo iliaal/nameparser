@@ -38,7 +38,7 @@
         "check:readme": "php -r \"exit(substr_count(file_get_contents('README.md'), \\\"—\\\") === 0 ? 0 : 1);\"",
         "lint": "php-cs-fixer fix --dry-run --diff",
         "lint:fix": "php-cs-fixer fix",
-        "test": "phpunit"
+        "test": "@php -d memory_limit=256M vendor/bin/phpunit"
     },
     "config": {
         "sort-packages": true,

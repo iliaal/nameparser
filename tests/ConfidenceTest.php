@@ -138,6 +138,42 @@ class ConfidenceTest extends TestCase
         );
     }
 
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function decoratedTitleCollisionProvider(): array
+    {
+        return [
+            'credential suffix' => ['Lord Ashcroft MD'],
+            'generational suffix' => ['Lord Ashcroft Jr'],
+            'trailing nickname' => ['Lord Ashcroft (Bob)'],
+            'interior nickname' => ['Lord (Bob) Ashcroft'],
+            'nickname containing comma' => ["Lord 'Bob, Jr' Ashcroft"],
+            'empty comma tail' => ['Lord Ashcroft,'],
+            'credential-only comma tail' => ['Lord Ashcroft, MD'],
+        ];
+    }
+
+    #[DataProvider('decoratedTitleCollisionProvider')]
+    public function testDecorationsDoNotHideTwoNamePartSalutationCollision(string $input): void
+    {
+        $result = Confidence::assess($input);
+
+        $this->assertTrue($result['ambiguous'], "expected '$input' to be flagged ambiguous");
+        $this->assertSame(
+            ["'Lord' could be a name or a salutation; nothing in the input decides it"],
+            $result['notes'],
+        );
+    }
+
+    public function testNonEmptyStructuralCommaResolvesSalutationCollision(): void
+    {
+        $this->assertSame(
+            ['ambiguous' => false, 'notes' => []],
+            Confidence::assess('Lord, Ashcroft'),
+        );
+    }
+
     public function testStandaloneAssessmentRejectsInputOverByteBudget(): void
     {
         $this->expectException(\LengthException::class);
@@ -176,6 +212,26 @@ class ConfidenceTest extends TestCase
         Confidence::assess(
             'John Smith',
             tokens: array_fill(0, self::MAX_INPUT_TOKENS + 1, 'A'),
+        );
+    }
+
+    public function testSuppliedTokensDoNotBypassOriginalTokenBudget(): void
+    {
+        $this->expectException(\LengthException::class);
+
+        Confidence::assess(
+            str_repeat('A ', self::MAX_INPUT_TOKENS) . 'A',
+            tokens: ['A'],
+        );
+    }
+
+    public function testSuppliedTokensHaveAnAggregateByteBudget(): void
+    {
+        $this->expectException(\LengthException::class);
+
+        Confidence::assess(
+            'John Smith',
+            tokens: [str_repeat('A', self::MAX_INPUT_BYTES + 1)],
         );
     }
 }

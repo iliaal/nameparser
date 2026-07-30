@@ -113,6 +113,18 @@ class SuffixMapper extends AbstractMapper
         $leadingSuffixIndexes = $this->reservedParts === 0
             ? $this->mapLeadingSuffixRun($parts)
             : [];
+        /** @var array<int, true> $leadingCandidateIndexes */
+        $leadingCandidateIndexes = [];
+        if ($leadingSuffixIndexes !== []) {
+            $uniformUpper = $this->isUniformUpperContext($parts, $this->uniformUpperOverride);
+
+            if (! $uniformUpper) {
+                $leadingCandidateIndexes = $this->mapLeadingUnknownCredentialRun(
+                    $parts,
+                    count($leadingSuffixIndexes),
+                );
+            }
+        }
         /** @var array<int, true> $leadingSet */
         $leadingSet = array_fill_keys($leadingSuffixIndexes, true);
 
@@ -185,6 +197,7 @@ class SuffixMapper extends AbstractMapper
         if ($suffixIndexes === []) {
             $candidateIndexes = [];
         }
+        $candidateIndexes += $leadingCandidateIndexes;
 
         $suffixIndexes = array_merge($leadingSuffixIndexes, $suffixIndexes);
 
@@ -371,6 +384,31 @@ class SuffixMapper extends AbstractMapper
         }
 
         return [];
+    }
+
+    /**
+     * Unknown credentials can ride on a dictionary credential only while they
+     * are immediately adjacent to its leading run. The first name token ends
+     * the run, so a later uppercase name is never pulled backward into it.
+     *
+     * @param  PartArray  $parts
+     * @return array<int, true>
+     */
+    private function mapLeadingUnknownCredentialRun(array $parts, int $start): array
+    {
+        /** @var array<int, true> $run */
+        $run = [];
+
+        for ($index = $start; $index < count($parts); $index++) {
+            $part = $parts[$index];
+            if (! is_string($part) || ! $this->isUnknownCredentialCandidate($part)) {
+                break;
+            }
+
+            $run[$index] = true;
+        }
+
+        return $run;
     }
 
     /**

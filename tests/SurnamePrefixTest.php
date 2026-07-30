@@ -253,6 +253,9 @@ class SurnamePrefixTest extends TestCase
             'irish mhic'       => ['Peig Mhic Gearailt', 'Peig', 'Mhic Gearailt'],
             'comma form'       => ['Ó Cuív, Éamon', 'Éamon', 'Ó Cuív'],
             'salutation led'   => ['Dr. Éamon Ó Cuív', 'Éamon', 'Ó Cuív'],
+            'decomposed o'     => ["Éamon O\u{0301} Cuív", 'Éamon', 'Ó Cuív'],
+            'decomposed ni'    => ["Mary Ni\u{0301} Mhaoileoin", 'Mary', 'Ní Mhaoileoin'],
+            'decomposed ui'    => ["Bean Ui\u{0301} Bhriain", 'Bean', 'Uí Bhriain'],
 
             // the dictionary value carries the capital and the fada, so
             // uniform-caps input still renders the particle correctly
@@ -317,6 +320,32 @@ class SurnamePrefixTest extends TestCase
         $this->assertSame($first, $name->getFirstname(), "first name for '$input'");
         $this->assertSame($last, $name->getLastname(), "last name for '$input'");
         $this->assertSame('', $name->getInitials(), "initials for '$input'");
+    }
+
+    /**
+     * @return array<string, array{string, string, string}>
+     */
+    public static function surnameStemProvider(): array
+    {
+        return [
+            // input, expected middle, expected last
+            'Pietro is a given name' => ['John Pietro Smith', 'Pietro', 'Smith'],
+            'Vere is a given name'   => ['John Vere Smith', 'Vere', 'Smith'],
+            'Pietro surname after a real particle' => ['John di Pietro', '', 'di Pietro'],
+            'Vere surname after a real particle'   => ['Edward de Vere', '', 'de Vere'],
+        ];
+    }
+
+    #[DataProvider('surnameStemProvider')]
+    public function testSurnameStemsAreNotRegisteredAsParticles(
+        string $input,
+        string $middle,
+        string $last,
+    ): void {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($middle, $name->getMiddlename(), "middle name for '$input'");
+        $this->assertSame($last, $name->getLastname(), "last name for '$input'");
     }
 
     /**

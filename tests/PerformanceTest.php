@@ -12,6 +12,8 @@ class PerformanceTest extends TestCase
 
     private const float MAX_SCALING_RATIO = 3.0;
 
+    private const int SCALING_SAMPLES = 3;
+
     private const int MAX_INPUT_BYTES = 1024 * 1024;
 
     private const int MAX_INPUT_TOKENS = 65536;
@@ -144,6 +146,58 @@ class PerformanceTest extends TestCase
         (new Parser())->parse(str_repeat('A,', self::MAX_INPUT_TOKENS) . 'A');
     }
 
+    public function testExactByteLimitEmptyCommaRunUsesBoundedMemory(): void
+    {
+        $code = <<<'PHP'
+            require 'vendor/autoload.php';
+
+            $name = (new Iliaal\NameParser\Parser())->parse(str_repeat(',', 1048576));
+
+            exit($name->getFullName() === '' ? 0 : 1);
+            PHP;
+        $this->assertConstrainedPhpSucceeds($code);
+    }
+
+    public function testConfidenceTitleCollisionCommaRunUsesBoundedMemory(): void
+    {
+        $code = <<<'PHP'
+            require 'vendor/autoload.php';
+
+            $prefix = 'Lord Ashcroft';
+            $input = $prefix . str_repeat(',', 1048576 - strlen($prefix));
+            $result = Iliaal\NameParser\Confidence::assess($input);
+
+            exit($result['ambiguous'] ? 0 : 1);
+            PHP;
+        $this->assertConstrainedPhpSucceeds($code);
+    }
+
+    private function assertConstrainedPhpSucceeds(string $code): void
+    {
+        $process = proc_open(
+            [PHP_BINARY, '-d', 'memory_limit=64M', '-r', $code],
+            [
+                1 => ['pipe', 'w'],
+                2 => ['pipe', 'w'],
+            ],
+            $pipes,
+            dirname(__DIR__),
+        );
+        if (! is_resource($process)) {
+            self::fail('Unable to start the constrained-memory PHP process.');
+        }
+
+        $stdout = stream_get_contents($pipes[1]);
+        $stderr = stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        $status = proc_close($process);
+
+        $this->assertSame('', $stdout);
+        $this->assertSame('', $stderr);
+        $this->assertSame(0, $status);
+    }
+
     /**
      * @param  callable(int): string  $input
      */
@@ -153,14 +207,63 @@ class PerformanceTest extends TestCase
         int $smallSize = 16000,
         int $largeSize = 32000,
     ): void {
-        $small = $this->parseSeconds($input($smallSize), $surnameFirst);
-        $large = $this->parseSeconds($input($largeSize), $surnameFirst);
+        $smallInput = $input($smallSize);
+        $largeInput = $input($largeSize);
+        $this->parseCpuSeconds($smallInput, $surnameFirst);
+        $this->parseCpuSeconds($largeInput, $surnameFirst);
+
+        $smallSamples = [];
+        $largeSamples = [];
+        for ($sample = 0; $sample < self::SCALING_SAMPLES; $sample++) {
+            if ($sample % 2 === 0) {
+                $smallSamples[] = $this->parseCpuSeconds($smallInput, $surnameFirst);
+                $largeSamples[] = $this->parseCpuSeconds($largeInput, $surnameFirst);
+            } else {
+                $largeSamples[] = $this->parseCpuSeconds($largeInput, $surnameFirst);
+                $smallSamples[] = $this->parseCpuSeconds($smallInput, $surnameFirst);
+            }
+        }
+
+        $small = $this->median($smallSamples);
+        $large = $this->median($largeSamples);
 
         $this->assertLessThan(self::MAX_SECONDS, $large);
         $this->assertLessThan(
             ($small * self::MAX_SCALING_RATIO) + 0.005,
             $large,
         );
+    }
+
+    /**
+     * @param  non-empty-list<float>  $samples
+     */
+    private function median(array $samples): float
+    {
+        sort($samples);
+
+        return $samples[intdiv(count($samples), 2)];
+    }
+
+    private function parseCpuSeconds(string $input, bool $surnameFirst = false): float
+    {
+        $started = getrusage();
+        $parser = (new Parser())->setSurnameFirst($surnameFirst);
+        $parser->parse($input)->toArray();
+        $finished = getrusage();
+        if ($started === false || $finished === false) {
+            self::fail('Unable to read process CPU usage.');
+        }
+
+        return $this->cpuSeconds($finished) - $this->cpuSeconds($started);
+    }
+
+    /**
+     * @param  array<string, int>  $usage
+     */
+    private function cpuSeconds(array $usage): float
+    {
+        return ($usage['ru_utime.tv_sec'] + $usage['ru_stime.tv_sec'])
+            + (($usage['ru_utime.tv_usec'] + $usage['ru_stime.tv_usec']) / 1_000_000);
     }
 
     private function parseSeconds(string $input, bool $surnameFirst = false): float

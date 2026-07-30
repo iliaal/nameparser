@@ -196,6 +196,7 @@ class CredentialCollisionTest extends TestCase
             'space nursing credential run'     => ['Jane Doe RN BSN CCRN', 'Jane', '', 'Doe', '', 'RN BSN CCRN'],
             'comma unknown after known'        => ['Garcia, Maria, MD, FACS', 'Maria', '', 'Garcia', '', 'MD FACS'],
             'comma credential-only unknown run' => ['John Smith, MD, FACS', 'John', '', 'Smith', '', 'MD FACS'],
+            'comma credential-only space run' => ['John Smith, MD FACS', 'John', '', 'Smith', '', 'MD FACS'],
             // the phantom-initials bug: a credential-only segment before the
             // given name no longer leaks into the initials field
             'comma credential before given'    => ['Smith, MD, John', 'John', '', 'Smith', '', 'MD'],
@@ -224,6 +225,22 @@ class CredentialCollisionTest extends TestCase
                 'Smith',
                 '',
                 'MD PAUL RN',
+            ],
+            'leading credential anchors only its contiguous unknown run' => [
+                'Smith, MD FACS John PAUL',
+                'John',
+                'Paul',
+                'Smith',
+                '',
+                'MD FACS',
+            ],
+            'leading credential run may alternate known and unknown tokens' => [
+                'Smith, MD FACS RN John',
+                'John',
+                '',
+                'Smith',
+                '',
+                'MD FACS RN',
             ],
             // combined initials behind a preserved name token are not a
             // stray credential; only the contiguous tail run qualifies

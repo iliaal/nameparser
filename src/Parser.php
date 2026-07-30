@@ -937,14 +937,31 @@ class Parser
         $masked = $this->maskDelimitedCommas($name);
 
         $segments = [];
+        $hasStructuralComma = false;
         $offset = 0;
 
         while (($pos = strpos($masked, ',', $offset)) !== false) {
-            $segments[] = substr($name, $offset, $pos - $offset);
+            $hasStructuralComma = true;
+            $segment = substr($name, $offset, $pos - $offset);
+            if ($segment !== '' || $segments === [] || end($segments) !== '') {
+                $segments[] = $segment;
+            }
+
             $offset = $pos + 1;
         }
 
-        $segments[] = substr($name, $offset);
+        if (! $hasStructuralComma) {
+            return [$name];
+        }
+
+        $segment = substr($name, $offset);
+        if ($segment !== '' || end($segments) !== '') {
+            $segments[] = $segment;
+        }
+
+        if (count($segments) === 1) {
+            $segments[] = '';
+        }
 
         return $segments;
     }

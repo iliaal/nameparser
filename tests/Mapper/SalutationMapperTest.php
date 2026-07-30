@@ -66,4 +66,34 @@ class SalutationMapperTest extends AbstractMapperTestCase
 
         return new SalutationMapper($english->getSalutations());
     }
+
+    public function testOverlappingCustomSalutationsMatchLongestFirst(): void
+    {
+        $mapper = new SalutationMapper([
+            'chief' => 'Chief',
+            'chief medical' => 'Chief Medical',
+            'chief medical officer' => 'Chief Medical Officer',
+        ]);
+
+        $this->assertEquals(
+            [
+                new Salutation('Chief Medical Officer', 'Chief Medical Officer'),
+                'Jane',
+                'Doe',
+            ],
+            $mapper->map(['Chief', 'Medical', 'Officer', 'Jane', 'Doe']),
+        );
+        $this->assertEquals(
+            [
+                new Salutation('Chief Medical', 'Chief Medical'),
+                'Jane',
+                'Doe',
+            ],
+            $mapper->map(['Chief', 'Medical', 'Jane', 'Doe']),
+        );
+        $this->assertEquals(
+            [new Salutation('Chief', 'Chief'), 'Jane', 'Doe'],
+            $mapper->map(['Chief', 'Jane', 'Doe']),
+        );
+    }
 }

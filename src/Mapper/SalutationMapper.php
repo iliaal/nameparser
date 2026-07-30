@@ -52,6 +52,11 @@ class SalutationMapper extends AbstractMapper
     private array $multiWord = [];
 
     /**
+     * @var array<string, true>
+     */
+    private array $multiWordStarts = [];
+
+    /**
      * @param  array<int|string, string>  $salutations
      * @param  bool  $requireRemainder  refuse to consume the segment's last
      *                                  token, for segments the caller has
@@ -68,9 +73,16 @@ class SalutationMapper extends AbstractMapper
     ) {
         foreach ($salutations as $key => $salutation) {
             if (str_contains((string) $key, ' ')) {
-                $this->multiWord[] = [explode(' ', (string) $key), $salutation];
+                $keys = explode(' ', (string) $key);
+                $this->multiWord[] = [$keys, $salutation];
+                $this->multiWordStarts[$keys[0]] = true;
             }
         }
+
+        usort(
+            $this->multiWord,
+            static fn(array $left, array $right): int => count($right[0]) <=> count($left[0]),
+        );
     }
 
     /**
@@ -255,7 +267,8 @@ class SalutationMapper extends AbstractMapper
 
         $currentKey = $this->getKey($current);
 
-        if (array_key_exists($currentKey, $this->salutations)) {
+        if (! isset($this->multiWordStarts[$currentKey])
+            && array_key_exists($currentKey, $this->salutations)) {
             return [new Salutation($current, $this->salutations[$currentKey]), 1];
         }
 
@@ -273,6 +286,10 @@ class SalutationMapper extends AbstractMapper
             if ($this->isMatchingSubset($keys, $subset)) {
                 return [new Salutation(implode(' ', $subset), $salutation), $length];
             }
+        }
+
+        if (array_key_exists($currentKey, $this->salutations)) {
+            return [new Salutation($current, $this->salutations[$currentKey]), 1];
         }
 
         return [$current, 1];
