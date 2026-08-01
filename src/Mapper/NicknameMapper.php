@@ -164,6 +164,13 @@ class NicknameMapper extends AbstractMapper
                 }
 
                 if ($delimiterStack === []) {
+                    // the closer may carry glued trailing punctuation
+                    // ("(Bob);"); drop it with the closer so it cannot leak
+                    // into the nickname value
+                    if (! str_ends_with($part, $closed[0]['close'])) {
+                        $part = rtrim($part, '.,;:');
+                    }
+
                     $outerCloserLength = mb_strlen($closed[0]['close'], 'UTF-8');
                     $part = mb_substr($part, 0, -$outerCloserLength, 'UTF-8');
                     $pending = [];
@@ -229,11 +236,36 @@ class NicknameMapper extends AbstractMapper
      */
     private function matchingCloserCount(string $part, array $delimiterStack): int
     {
+        $matches = $this->closerCountFor($part, $delimiterStack, false);
+        if ($matches > 0) {
+            return $matches;
+        }
+
+        // an asymmetric closer with glued trailing punctuation ("(Bob);") still
+        // closes the span; the token-final rule only protects symmetric quotes
+        // (a quote inside "'t Hooft" must not close anything)
+        $trimmed = rtrim($part, '.,;:');
+        if ($trimmed === $part || $trimmed === '') {
+            return 0;
+        }
+
+        return $this->closerCountFor($trimmed, $delimiterStack, true);
+    }
+
+    /**
+     * @param  list<array{open: string, close: string, symmetric: bool}>  $delimiterStack
+     */
+    private function closerCountFor(string $part, array $delimiterStack, bool $asymmetricOnly): int
+    {
         $suffix = '';
         $matches = 0;
         $partLength = strlen($part);
 
         for ($i = count($delimiterStack) - 1; $i >= 0; $i--) {
+            if ($asymmetricOnly && $delimiterStack[$i]['symmetric']) {
+                break;
+            }
+
             $closer = $delimiterStack[$i]['close'];
             if ($closer === '') {
                 break;
@@ -272,10 +304,20 @@ class NicknameMapper extends AbstractMapper
         if (! array_key_exists($closer, $this->lastCloserIndex)) {
             $last = null;
             foreach ($parts as $k => $part) {
-                if (is_string($part)
-                    && mb_substr($part, -$closerLength, null, 'UTF-8') === $closer) {
-                    $last = $k;
+                if (! is_string($part)
+                    || mb_substr($part, -$closerLength, null, 'UTF-8') !== $closer) {
+                    continue;
                 }
+
+                // a self-balanced quoted token ("'Genius'") closes itself; its
+                // tail quote is not a closer for an earlier orphan opener, or a
+                // leading elided particle ("'t") would swallow the row
+                if (mb_strlen($part, 'UTF-8') >= $closerLength * 2
+                    && str_starts_with($part, $closer)) {
+                    continue;
+                }
+
+                $last = $k;
             }
 
             $this->lastCloserIndex[$closer] = $last;

@@ -4,6 +4,7 @@ namespace Iliaal\NameParser\Mapper;
 
 use Iliaal\NameParser\Part\AbstractPart;
 use Iliaal\NameParser\Part\Ignored;
+use Iliaal\NameParser\Part\Nickname;
 use Iliaal\NameParser\Part\Salutation;
 use Iliaal\NameParser\Part\SalutationConnector;
 use Iliaal\NameParser\Text;
@@ -20,14 +21,24 @@ class SalutationMapper extends AbstractMapper
     private const string LEADING_ARTICLE = 'the';
 
     /**
-     * Tokens that join two titles into one honorific ("Mr. and Mrs."). Both
-     * render as "and" so the two spellings normalize to one salutation.
+     * Tokens that join two titles into one honorific ("Mr. and Mrs."), keyed
+     * by registry lookup key with the rendered output form as the value. Both
+     * default spellings render as "and" so they normalize to one salutation.
+     * A language can extend the set via ConnectorsInterface ("Herr und Frau").
      */
-    private const array CONNECTOR_KEYS = [
-        'and' => true, '&' => true,
+    public const array DEFAULT_CONNECTORS = [
+        'and' => 'and', '&' => 'and',
     ];
 
-    private const string CONNECTOR_RENDERED = 'and';
+    /**
+     * @var array<string, string>
+     */
+    private array $connectors;
+
+    /**
+     * @var array<string, string>
+     */
+    private array $spanDelimiters;
 
     /**
      * Salutation keys that are also real personal names, so reading one as an
@@ -63,6 +74,9 @@ class SalutationMapper extends AbstractMapper
      *                                  already asserted to be a surname
      * @param  array<int|string, string>  $suffixes
      * @param  array<string, string>  $nicknameDelimiters
+     * @param  array<string, string>  $connectors  connector key => rendered
+     *                                             form; empty keeps the
+     *                                             English defaults
      */
     public function __construct(
         protected array $salutations,
@@ -70,7 +84,11 @@ class SalutationMapper extends AbstractMapper
         protected bool $requireRemainder = false,
         protected array $suffixes = [],
         protected array $nicknameDelimiters = [],
+        array $connectors = [],
     ) {
+        $this->connectors = $connectors === [] ? self::DEFAULT_CONNECTORS : $connectors;
+        $this->spanDelimiters = Text::sanitizeNicknameDelimiters($nicknameDelimiters);
+
         foreach ($salutations as $key => $salutation) {
             if (str_contains((string) $key, ' ')) {
                 $keys = explode(' ', (string) $key);
@@ -120,7 +138,7 @@ class SalutationMapper extends AbstractMapper
             // absorbed, and it does not count toward the scan budget because it
             // is not itself a title.
             if (is_string($part)
-                && isset(self::CONNECTOR_KEYS[$this->getKey($part)])
+                && isset($this->connectors[$this->getKey($part)])
                 && $mapped !== []
                 && end($mapped) instanceof Salutation) {
                 $next = $input + $consumed;
@@ -135,7 +153,7 @@ class SalutationMapper extends AbstractMapper
                 if ($rightTitle instanceof Salutation
                     && $remainderState !== null
                     && $remainderState[1] >= $next + $rightConsumed) {
-                    $mapped[] = new SalutationConnector($part, self::CONNECTOR_RENDERED);
+                    $mapped[] = new SalutationConnector($part, $this->connectors[$this->getKey($part)]);
                     $input += $consumed;
 
                     continue;
@@ -203,16 +221,29 @@ class SalutationMapper extends AbstractMapper
         $afterConnector = false;
 
         foreach ($parts as $index => $part) {
+            // a nickname between the connector and the title is transparent:
+            // "Mr. and (Bob) Mrs. Smith" still has an unattributed Mrs., which
+            // must not be title-cased into the first name. Applies to already
+            // extracted Nickname parts and raw self-contained span tokens; the
+            // span test only matters while a connector is pending.
+            if ($index >= $start && $part instanceof Nickname) {
+                continue;
+            }
+
             if ($index < $start || ! is_string($part)) {
                 $afterConnector = false;
 
                 continue;
             }
 
-            if (isset(self::CONNECTOR_KEYS[$this->getKey($part)])) {
+            if (isset($this->connectors[$this->getKey($part)])) {
                 $parts[$index] = new Ignored($part);
                 $afterConnector = true;
 
+                continue;
+            }
+
+            if ($afterConnector && Text::isSpanWrappedToken($part, $this->spanDelimiters)) {
                 continue;
             }
 
@@ -304,7 +335,7 @@ class SalutationMapper extends AbstractMapper
         $decorated = array_slice($parts, $start);
 
         if ($this->suffixes !== [] || $this->nicknameDelimiters !== []) {
-            $suffixMapper = new SuffixMapper($this->suffixes, true, 0);
+            $suffixMapper = new SuffixMapper($this->suffixes, true, 0, $this->nicknameDelimiters);
             $decorated = $suffixMapper->map($decorated);
             $decorated = (new NicknameMapper($this->nicknameDelimiters))->map($decorated);
             $decorated = $suffixMapper->map($decorated);
@@ -320,7 +351,7 @@ class SalutationMapper extends AbstractMapper
 
             $lastRawNameIndex = max($lastRawNameIndex, $start + $index);
             $key = $this->getKey($part);
-            if ($key === self::LEADING_ARTICLE || isset(self::CONNECTOR_KEYS[$key])) {
+            if ($key === self::LEADING_ARTICLE || isset($this->connectors[$key])) {
                 continue;
             }
 
@@ -372,7 +403,7 @@ class SalutationMapper extends AbstractMapper
 
         return $part instanceof Salutation
             && is_string($previous)
-            && isset(self::CONNECTOR_KEYS[$this->getKey($previous)]);
+            && isset($this->connectors[$this->getKey($previous)]);
     }
 
     /**

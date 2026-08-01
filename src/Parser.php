@@ -12,6 +12,7 @@ use Iliaal\NameParser\Mapper\SalutationMapper;
 use Iliaal\NameParser\Mapper\SuffixMapper;
 use Iliaal\NameParser\Part\Firstname;
 use Iliaal\NameParser\Part\GivenNamePart;
+use Iliaal\NameParser\Part\Ignored;
 use Iliaal\NameParser\Part\Lastname;
 use Iliaal\NameParser\Part\Salutation;
 use Iliaal\NameParser\Part\Suffix;
@@ -76,6 +77,14 @@ class Parser
      * @var array<int|string, string>|null
      */
     private ?array $salutations = null;
+
+    /**
+     * memoized merge of the default honorific connectors with any provided by
+     * the configured languages (ConnectorsInterface)
+     *
+     * @var array<string, string>|null
+     */
+    private ?array $connectors = null;
 
     /**
      * memoized whitespace-collapse pattern, rebuilt only when the whitespace
@@ -377,7 +386,12 @@ class Parser
                     foreach ($this->mapCommaSegmentSuffixes(array_column($classes, 0), $uniformInput) as $part) {
                         $parts[] = $part;
                     }
-                    $runAnchored = true;
+
+                    // the anchor reaches the next segment only when the
+                    // credential run touches this segment's tail; a leading
+                    // run ("MD John") must not promote a name in a following
+                    // segment ("Smith, MD John, PAUL" keeps PAUL)
+                    $runAnchored = $classes[count($classes) - 1][1] !== 0;
 
                     continue;
                 }
@@ -671,10 +685,11 @@ class Parser
                 false,
                 $this->getSuffixes(),
                 $this->getNicknameDelimiters(),
+                $this->getConnectors(),
             ),
-            new SuffixMapper($this->getSuffixes(), false, 2),
+            new SuffixMapper($this->getSuffixes(), false, 2, $this->getNicknameDelimiters()),
             new NicknameMapper($this->getNicknameDelimiters()),
-            new SuffixMapper($this->getSuffixes(), false, 2),
+            new SuffixMapper($this->getSuffixes(), false, 2, $this->getNicknameDelimiters()),
             new InitialMapper($this->getMaxCombinedInitials(), false, $this->getPrefixes()),
             new LastnameMapper($this->getPrefixes(), true),
             new FirstnameMapper(),
@@ -688,7 +703,7 @@ class Parser
         // NicknameMapper runs so a left-side nick ("John (Bob) Smith, Jane") is
         // extracted rather than folded into the surname
         return $this->surnameSegmentParser ??= $this->newSegmentParser()->setMappers([
-            new SuffixMapper($this->getSuffixes(), false, 1),
+            new SuffixMapper($this->getSuffixes(), false, 1, $this->getNicknameDelimiters()),
             new NicknameMapper($this->getNicknameDelimiters()),
             new SalutationMapper(
                 $this->getSalutations(),
@@ -696,8 +711,9 @@ class Parser
                 true,
                 $this->getSuffixes(),
                 $this->getNicknameDelimiters(),
+                $this->getConnectors(),
             ),
-            new SuffixMapper($this->getSuffixes(), false, 1),
+            new SuffixMapper($this->getSuffixes(), false, 1, $this->getNicknameDelimiters()),
             new LastnameMapper($this->getPrefixes(), true, true),
         ]);
     }
@@ -711,8 +727,8 @@ class Parser
                 $this->getPrefixes(),
             );
             $this->secondSegmentSuffixMappers = [
-                new SuffixMapper($this->getSuffixes(), true, 0),
-                new SuffixMapper($this->getSuffixes(), true, 0),
+                new SuffixMapper($this->getSuffixes(), true, 0, $this->getNicknameDelimiters()),
+                new SuffixMapper($this->getSuffixes(), true, 0, $this->getNicknameDelimiters()),
             ];
             $this->secondSegmentParser = $this->newSegmentParser()->setMappers([
                 $this->secondSegmentSuffixMappers[0],
@@ -723,6 +739,7 @@ class Parser
                     true,
                     $this->getSuffixes(),
                     $this->getNicknameDelimiters(),
+                    $this->getConnectors(),
                 ),
                 $this->secondSegmentSuffixMappers[1],
                 $this->secondSegmentInitialMapper,
@@ -761,10 +778,11 @@ class Parser
                     false,
                     $this->getSuffixes(),
                     $this->getNicknameDelimiters(),
+                    $this->getConnectors(),
                 ),
-                new SuffixMapper($this->getSuffixes()),
+                new SuffixMapper($this->getSuffixes(), false, 2, $this->getNicknameDelimiters()),
                 new NicknameMapper($this->getNicknameDelimiters()),
-                new SuffixMapper($this->getSuffixes()),
+                new SuffixMapper($this->getSuffixes(), false, 2, $this->getNicknameDelimiters()),
                 new InitialMapper($this->getMaxCombinedInitials(), false, $this->getPrefixes()),
                 new LastnameMapper($this->getPrefixes()),
                 new FirstnameMapper(),
@@ -795,10 +813,13 @@ class Parser
      */
     public function setMappers(array $mappers): Parser
     {
+        // an identity re-set of an already-promoted parser-owned list keeps the
+        // resync latch; without this, a second setMappers(getMappers()) call
+        // silently detached config setters from the pipeline
         $promotesDefaultMappers = $mappers !== []
-            && ! $this->customMappers
             && $this->mappers !== []
-            && $mappers === $this->mappers;
+            && $mappers === $this->mappers
+            && (! $this->customMappers || $this->resyncCustomMappers);
 
         $this->mappers = $mappers;
         $this->customMappers = $mappers !== [];
@@ -821,6 +842,7 @@ class Parser
         $this->prefixes = null;
         $this->suffixes = null;
         $this->salutations = null;
+        $this->connectors = null;
 
         if (! $this->customMappers) {
             $this->mappers = [];
@@ -858,6 +880,7 @@ class Parser
                     false,
                     $this->getSuffixes(),
                     $this->getNicknameDelimiters(),
+                    $this->getConnectors(),
                 );
             } elseif ($mapper instanceof NicknameMapper) {
                 $this->mappers[$i] = new NicknameMapper($this->getNicknameDelimiters());
@@ -866,6 +889,7 @@ class Parser
                     $this->getSuffixes(),
                     $mapper->matchesSinglePart(),
                     $mapper->getReservedParts(),
+                    $this->getNicknameDelimiters(),
                 );
             } elseif ($mapper instanceof LastnameMapper) {
                 $this->mappers[$i] = new LastnameMapper($this->getPrefixes());
@@ -1039,10 +1063,17 @@ class Parser
         // lookahead is a bounded list walk instead of a rescan
         /** @var array<string, list<int>> $symmetricEnds */
         $symmetricEnds = [];
-        $tokenEnds = [];
-        for ($i = 1; $i <= $total; ++$i) {
+        /** @var list<array{int, int}> $tokenRanges token start, end (exclusive) */
+        $tokenRanges = [];
+        $tokenStart = null;
+        for ($i = 0; $i <= $total; ++$i) {
             if ($this->isStructuralTokenBoundary($chars[$i] ?? null)) {
-                $tokenEnds[] = $i;
+                if ($tokenStart !== null) {
+                    $tokenRanges[] = [$tokenStart, $i];
+                    $tokenStart = null;
+                }
+            } elseif ($tokenStart === null) {
+                $tokenStart = $i;
             }
         }
 
@@ -1051,11 +1082,21 @@ class Parser
             $quoteChars = mb_str_split($quote, 1, 'UTF-8');
             $len = count($quoteChars);
 
-            foreach ($tokenEnds as $end) {
-                $start = $end - $len;
-                if ($start >= 0 && $this->charsMatchAt($chars, $start, $quoteChars)) {
-                    $symmetricEnds[$quote][] = $start;
+            foreach ($tokenRanges as [$start, $end]) {
+                $closerStart = $end - $len;
+                if ($closerStart < $start || ! $this->charsMatchAt($chars, $closerStart, $quoteChars)) {
+                    continue;
                 }
+
+                // a self-balanced quoted token ("'Genius'") closes itself; its
+                // tail quote must not serve as the closer for an earlier orphan
+                // opener, or a leading elided particle ("'t") would open a span
+                // that swallows the structural comma
+                if ($end - $start >= $len * 2 && $this->charsMatchAt($chars, $start, $quoteChars)) {
+                    continue;
+                }
+
+                $symmetricEnds[$quote][] = $closerStart;
             }
         }
 
@@ -1263,6 +1304,7 @@ class Parser
             $this->getSalutations(),
             suffixes: $this->getSuffixes(),
             nicknameDelimiters: $this->getNicknameDelimiters(),
+            connectors: $this->getConnectors(),
         ))->map($tokens);
         $offset = 0;
         $peeled = [];
@@ -1290,6 +1332,10 @@ class Parser
         foreach (array_slice($mapped, $offset) as $part) {
             if (is_string($part)) {
                 $tokens[] = $part;
+            } elseif ($part instanceof Ignored) {
+                // an unattributed connector must stay visible in getParts();
+                // the downstream segment mapper re-wraps the raw token
+                $tokens[] = $part->getValue();
             }
         }
 
@@ -1340,6 +1386,30 @@ class Parser
     public function getSalutations(): array
     {
         return $this->salutations ??= $this->mergeFromLanguages('getSalutations');
+    }
+
+    /**
+     * honorific connector tokens ("Mr. and Mrs.", "Herr und Frau") as key =>
+     * rendered form. Languages add theirs via ConnectorsInterface (first
+     * language wins on collision); the English defaults are always present.
+     *
+     * @return array<string, string>
+     */
+    public function getConnectors(): array
+    {
+        if ($this->connectors === null) {
+            $merged = [];
+
+            foreach ($this->languages as $language) {
+                if ($language instanceof ConnectorsInterface) {
+                    $merged += $language->getConnectors();
+                }
+            }
+
+            $this->connectors = $merged + SalutationMapper::DEFAULT_CONNECTORS;
+        }
+
+        return $this->connectors;
     }
 
     /**

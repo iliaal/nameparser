@@ -942,6 +942,18 @@ class ParserTest extends TestCase
         $this->assertSame('J M A B', $parser->parse('Walker, JMAB John')->getInitials());
     }
 
+    public function testRepromotedDefaultMappersKeepConfigResync(): void
+    {
+        // an identity re-set of the already-promoted list must not clear the
+        // resync latch and silently detach config setters
+        $parser = new Parser();
+        $parser->setMappers($parser->getMappers());
+        $parser->setMappers($parser->getMappers());
+        $parser->setMaxCombinedInitials(4);
+
+        $this->assertSame('J M A B', $parser->parse('John JMAB Walker')->getInitials());
+    }
+
     public function testPromotedDefaultMappersRefreshMutableLanguagePrefixes(): void
     {
         $language = new class implements LanguageInterface {

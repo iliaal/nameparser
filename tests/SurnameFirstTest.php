@@ -3,6 +3,7 @@
 namespace Tests\Iliaal\NameParser;
 
 use Iliaal\NameParser\Parser;
+use Iliaal\NameParser\Part\Ignored;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -184,5 +185,25 @@ class SurnameFirstTest extends TestCase
         $this->assertSame('Jong', $name->getFirstname());
         $this->assertSame('Un', $name->getMiddlename());
         $this->assertSame('MD', $name->getSuffix());
+    }
+
+    public function testPeeledSalutationKeepsIgnoredConnectorVisible(): void
+    {
+        // the peel rebuild must re-emit an unattributed connector so it stays
+        // visible in getParts(), matching the salutation-less form
+        $name = (new Parser())->setSurnameFirst(true)->parse('Dr. Kim and Jong Un');
+
+        $this->assertSame('Dr.', $name->getSalutation());
+        $this->assertSame('Kim', $name->getLastname());
+        $this->assertSame('Jong', $name->getFirstname());
+
+        $ignored = [];
+        foreach ($name->getParts() as $part) {
+            if ($part instanceof Ignored) {
+                $ignored[] = $part->getValue();
+            }
+        }
+
+        $this->assertSame(['and'], $ignored);
     }
 }

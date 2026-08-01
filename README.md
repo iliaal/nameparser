@@ -235,11 +235,14 @@ and commas.
 > **Uniform-case limitation.** Disambiguation keys off casing, so both all-caps
 > legacy data and all-lowercase input are ambiguous to the confidence pass. The
 > parser treats an ambiguous ALL-CAPS trailing token as a credential, but keeps
-> the lowercase form as a name part and normalizes its casing. Confidence flags
-> either form when the token is name-leaning (`Do`, `Vi`, `Ma`, `Ba`, `Lac`) or a
-> Census surname collision (`II`, `III`, `IV`, `MBA`). Clean credentials that are
-> not also names (`RN`, `PT`, `OD`, and other roman numerals such as `VII`) are
-> left unflagged to keep review volume manageable on all-caps datasets.
+> the lowercase form as a name part and normalizes its casing. Under uniform
+> uppercase, Confidence flags a token only when it is name-leaning (`Do`, `Vi`,
+> `Ma`, `Ba`, `Lac`) or a Census surname collision (`II`, `III`, `IV`, `MBA`);
+> clean credentials that are not also names (`RN`, `PT`, `OD`, and other roman
+> numerals such as `VII`) are left unflagged to keep review volume manageable on
+> all-caps datasets. All-lowercase input flags any credential collision, clean
+> ones included: the parser keeps a lowercase token as a name part, so a genuine
+> lowercase credential there would be a wrong split worth routing to review.
 
 ### Languages
 
@@ -260,6 +263,11 @@ $parser = new Parser([new English(), new German()]);
 Dictionary keys merge in constructor order, and the first language wins on
 collisions. With English first, `Fr.` resolves to `Fr.`. With German first, it
 resolves to `Frau`.
+
+A language can also contribute joint-honorific connectors by implementing
+`ConnectorsInterface`: the bundled German adds `und`, so `Herr und Frau
+Schmidt` parses as a joint name with `isJoint()` true. The English `and` and
+`&` connectors always stay available regardless of the language set.
 
 ### Configuration
 

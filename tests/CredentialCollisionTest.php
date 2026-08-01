@@ -351,4 +351,88 @@ class CredentialCollisionTest extends TestCase
         $this->assertSame('MD', $name->getSuffix());
         $this->assertSame('Jenny', $name->getNickname());
     }
+
+    /**
+     * @return array<string, array{string, string, string}>
+     */
+    public static function connectorInCredentialRunProvider(): array
+    {
+        return [
+            'ampersand'      => ['John Smith MD & PhD', 'John', 'MD PhD'],
+            'spelled and'    => ['John Smith MD and PhD', 'John', 'MD PhD'],
+            'unknown rider'  => ['Jane Doe RN & CCRN', 'Jane', 'RN CCRN'],
+        ];
+    }
+
+    /**
+     * a connector inside the trailing credential run is wrapped Ignored by the
+     * salutation pass; the suffix scan and the surname binding must both look
+     * through it instead of losing the surname and shredding the credential
+     */
+    #[DataProvider('connectorInCredentialRunProvider')]
+    public function testConnectorInsideCredentialRunKeepsSurnameAndSuffix(
+        string $input,
+        string $first,
+        string $suffix,
+    ): void {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($first, $name->getFirstname(), "first name for '$input'");
+        $this->assertSame($suffix, $name->getSuffix(), "suffix for '$input'");
+        $this->assertSame('', $name->getInitials(), "initials for '$input'");
+        $this->assertNotSame('', $name->getLastname(), "last name for '$input'");
+    }
+
+    /**
+     * @return array<string, array{string, string, string, string}>
+     */
+    public static function commaFormSingleLetterInitialProvider(): array
+    {
+        return [
+            'registry MI form I'     => ['Lapin, Michelle I', 'Michelle', 'I', ''],
+            'registry MI form V'     => ['Nguyen, Dong V, DPM', 'Dong', 'V', 'DPM'],
+            'control initial B'      => ['Lapin, Michelle B', 'Michelle', 'B', ''],
+        ];
+    }
+
+    /**
+     * a single letter after a real given name in a comma given segment is a
+     * middle initial (registry LAST, FIRST MI form), not a roman-numeral
+     * suffix; the surname-side generational form ("Doe III, John") still maps
+     */
+    #[DataProvider('commaFormSingleLetterInitialProvider')]
+    public function testCommaFormSingleLetterStaysInitial(
+        string $input,
+        string $first,
+        string $initials,
+        string $suffix,
+    ): void {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($first, $name->getFirstname(), "first name for '$input'");
+        $this->assertSame($initials, $name->getInitials(), "initials for '$input'");
+        $this->assertSame($suffix, $name->getSuffix(), "suffix for '$input'");
+    }
+
+    public function testSurnameSideGenerationalRomanStillMaps(): void
+    {
+        $name = (new Parser())->parse('Doe III, John');
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Doe', $name->getLastname());
+        $this->assertSame('III', $name->getSuffix());
+    }
+
+    public function testMaGuardHoldsThroughNickname(): void
+    {
+        // the bare-MA-after-single-initial guard must look through a nickname,
+        // extracted or still a raw "(Bob)" span token
+        $name = (new Parser())->parse('John A (Bob) MA');
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('A', $name->getInitials());
+        $this->assertSame('Ma', $name->getLastname());
+        $this->assertSame('Bob', $name->getNickname());
+        $this->assertSame('', $name->getSuffix());
+    }
 }

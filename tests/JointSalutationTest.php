@@ -438,4 +438,50 @@ class JointSalutationTest extends TestCase
             'nickname-only remainder' => ['Mr. and Mrs. (Bob)', false],
         ];
     }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function trailingConnectorProvider(): array
+    {
+        return [
+            'bare trailing and'       => ['John Smith and', 'John'],
+            'trailing ampersand'      => ['John Smith &', 'John'],
+        ];
+    }
+
+    /**
+     * a trailing unabsorbed connector is Ignored; the surname scan must look
+     * through it instead of losing the lastname entirely
+     */
+    #[DataProvider('trailingConnectorProvider')]
+    public function testTrailingConnectorDoesNotBlockSurname(string $input, string $first): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($first, $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('', $name->getMiddlename());
+    }
+
+    public function testTrailingConnectorAfterSalutationKeepsSurname(): void
+    {
+        $name = (new Parser())->parse('Mr. Smith and');
+
+        $this->assertSame('Mr.', $name->getSalutation());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('', $name->getFirstname());
+    }
+
+    public function testNicknameBetweenConnectorAndTitleStaysTransparent(): void
+    {
+        // the unattributed-title rule must look through the nickname; "Mrs."
+        // is still nobody's given name
+        $name = (new Parser())->parse('Mr. and (Bob) Mrs. Smith');
+
+        $this->assertSame('Mr.', $name->getSalutation());
+        $this->assertSame('', $name->getFirstname());
+        $this->assertSame('Bob', $name->getNickname());
+        $this->assertSame('Smith', $name->getLastname());
+    }
 }

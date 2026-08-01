@@ -219,14 +219,19 @@ class CommaSegmentTest extends TestCase
         $this->assertSame('Bob, Robert', $name->getNickname());
     }
 
-    public function testRevertedNicknameOpenerDropsTrailingComma(): void
+    public function testSuffixCollidingSpanCloserKeepsNicknameWhole(): void
     {
-        // the span's closer token is consumed as a suffix, so the opener
-        // reverts; the shielded comma must not survive in the middle name
+        // the span's closer token keys as a suffix ("III)"), but consuming it
+        // would orphan the opener; the whole span stays a nickname and the
+        // shielded comma must not leak into the middle name
         $name = (new Parser())->parse('Smith, John (Jack, III)');
 
-        $this->assertSame('Jack', $name->getMiddlename());
-        $this->assertSame('III', $name->getSuffix());
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+        // Nickname normalization title-cases the all-caps token, like any
+        // other all-caps nickname value
+        $this->assertSame('Jack, Iii', $name->getNickname());
+        $this->assertSame('', $name->getMiddlename());
     }
 
     public function testCommaInsideNicknameDoesNotBisect(): void
@@ -307,5 +312,95 @@ class CommaSegmentTest extends TestCase
         $this->assertSame('Jane', $name->getFirstname());
         $this->assertSame('-', $name->getMiddlename());
         $this->assertSame('', $name->getSuffix());
+    }
+
+    public function testTrailingSpanWithSuffixCollidingCloserStaysNickname(): void
+    {
+        // "MD)" closes the span; consuming it as a credential would orphan
+        // the opener and demote the nickname body into the name getters
+        $name = (new Parser())->parse('Doe, Jane (Bobbie, MD)');
+
+        $this->assertSame('Jane', $name->getFirstname());
+        $this->assertSame('Doe', $name->getLastname());
+        $this->assertSame('Bobbie, Md', $name->getNickname());
+        $this->assertSame('', $name->getMiddlename());
+        $this->assertSame('', $name->getSuffix());
+    }
+
+    /**
+     * @return array<string, array{string, string, string, string}>
+     */
+    public static function allCapsGivenBeforeCredentialProvider(): array
+    {
+        return [
+            'single all-caps given'    => ['Smith, JOHN MD', 'John', '', 'MD'],
+            'two all-caps givens'      => ['Smith, JOHN PAUL MD', 'John', 'Paul', 'MD'],
+            'unknown candidate given'  => ['Smith, FACS MD', 'Facs', '', 'MD'],
+        ];
+    }
+
+    /**
+     * an all-caps given name adjacent to the trailing credential must not be
+     * swallowed into the suffix: the given segment cannot map entirely to
+     * credentials, matching the comma-separated "Smith, JOHN, MD" locks
+     */
+    #[DataProvider('allCapsGivenBeforeCredentialProvider')]
+    public function testAllCapsGivenAdjacentToCredentialStaysName(
+        string $input,
+        string $first,
+        string $middle,
+        string $suffix,
+    ): void {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($first, $name->getFirstname(), "first name for '$input'");
+        $this->assertSame($middle, $name->getMiddlename(), "middle name for '$input'");
+        $this->assertSame('Smith', $name->getLastname(), "last name for '$input'");
+        $this->assertSame($suffix, $name->getSuffix(), "suffix for '$input'");
+    }
+
+    public function testKnownCredentialLeadingUnknownCandidateStillRides(): void
+    {
+        // the README-documented preference: when the unknown stands alone
+        // behind a known credential, both stay in the suffix
+        $name = (new Parser())->parse('Smith, MD FACS');
+
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('MD FACS', $name->getSuffix());
+        $this->assertSame('', $name->getFirstname());
+    }
+
+    public function testLeadingCredentialRunDoesNotAnchorAcrossComma(): void
+    {
+        // a leading run ("MD John") must not promote a name in a following
+        // segment; only a run touching the segment tail carries the anchor
+        $name = (new Parser())->parse('Smith, MD John, PAUL');
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Paul', $name->getMiddlename());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('MD', $name->getSuffix());
+    }
+
+    public function testNicknameAheadOfLeadingCredentialRunKeepsRun(): void
+    {
+        $name = (new Parser())->parse('Smith, (Doc) MD PhD John');
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('', $name->getInitials());
+        $this->assertSame('MD PhD', $name->getSuffix());
+        $this->assertSame('Doc', $name->getNickname());
+        $this->assertSame('Smith', $name->getLastname());
+    }
+
+    public function testSurnameSegmentBindsPastMidSegmentNickname(): void
+    {
+        // the reverse surname scan must look through an extracted nickname
+        // instead of stranding the far-side token as an invisible raw string
+        $name = (new Parser())->parse('Hidalgo (Hid) Castillo, Maria');
+
+        $this->assertSame('Maria', $name->getFirstname());
+        $this->assertSame('Hidalgo Castillo', $name->getLastname());
+        $this->assertSame('Hid', $name->getNickname());
     }
 }

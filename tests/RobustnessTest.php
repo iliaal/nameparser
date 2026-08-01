@@ -364,4 +364,111 @@ class RobustnessTest extends TestCase
         $this->assertSame('John', $name->getFirstname());
         $this->assertSame('Smith', $name->getLastname());
     }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function gluedCloserPunctuationProvider(): array
+    {
+        return [
+            'semicolon after closer' => ['John Smith (Bob);', 'Smith'],
+            'period after closer'    => ['John Smith (Bob).', 'Smith'],
+            'closer mid-name'        => ['John (Bob); Smith', 'Smith'],
+        ];
+    }
+
+    /**
+     * a closing delimiter with glued trailing punctuation still closes the
+     * span; the unclosed-opener revert must not leave "Bob)" as the surname
+     */
+    #[DataProvider('gluedCloserPunctuationProvider')]
+    public function testCloserWithGluedPunctuationClosesSpan(string $input, string $last): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame($last, $name->getLastname());
+        $this->assertSame('Bob', $name->getNickname());
+    }
+
+    /**
+     * @return array<string, array{string, string, string}>
+     */
+    public static function suffixCollidingSpanTailProvider(): array
+    {
+        return [
+            'paren span ending Jr'   => ['John Doe (Bob Jr)', 'Doe', 'Bob Jr'],
+            'quote span ending Jr'   => ["John Doe 'Bob, Jr'", 'Doe', 'Bob, Jr'],
+        ];
+    }
+
+    /**
+     * the closer-bearing token of a trailing span keys as a suffix ("Jr)"),
+     * but consuming it would orphan the opener; the nickname survives whole
+     * and the surname stays the surname
+     */
+    #[DataProvider('suffixCollidingSpanTailProvider')]
+    public function testTrailingSpanEndingInSuffixCollidingWordStaysNickname(
+        string $input,
+        string $last,
+        string $nickname,
+    ): void {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame($last, $name->getLastname());
+        $this->assertSame($nickname, $name->getNickname());
+        $this->assertSame('', $name->getSuffix());
+    }
+
+    public function testSelfBalancedQuotedTokenDoesNotCloseElidedParticle(): void
+    {
+        // 'Genius' closes itself; its tail quote must not serve as the closer
+        // for the elided-particle apostrophe in 't, or the whole row degrades
+        // to nickname parts
+        $name = (new Parser())->parse("'t Hooft, Gerard 'Genius'");
+
+        $this->assertSame('Gerard', $name->getFirstname());
+        $this->assertSame("'T Hooft", $name->getLastname());
+        $this->assertSame('Genius', $name->getNickname());
+
+        // the space form matches its no-nickname baseline ("Gerard 't Hooft"):
+        // the elided particle survives as a middle name there
+        $spaceForm = (new Parser())->parse("Gerard 't Hooft 'Genius'");
+
+        $this->assertSame('Gerard', $spaceForm->getFirstname());
+        $this->assertSame('Hooft', $spaceForm->getLastname());
+        $this->assertSame("'T", $spaceForm->getMiddlename());
+        $this->assertSame('Genius', $spaceForm->getNickname());
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function trailingPlaceholderProvider(): array
+    {
+        return [
+            'dash'      => ['John Smith -'],
+            'semicolon' => ['John Smith ;'],
+        ];
+    }
+
+    #[DataProvider('trailingPlaceholderProvider')]
+    public function testTrailingLetterlessPlaceholderIsNotASurname(string $input): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+    }
+
+    public function testInteriorLetterlessTokenKeepsOldSeparatorReading(): void
+    {
+        // only a trailing placeholder is skipped; an interior one still stops
+        // the surname scan the way it always did
+        $name = (new Parser())->parse('John - Smith');
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+    }
 }

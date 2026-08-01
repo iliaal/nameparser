@@ -217,6 +217,25 @@ final class Text
     }
 
     /**
+     * true when the token is one self-contained nickname span: it starts with
+     * an opener and ends with that opener's closer ("(Bob)", "'Doc'")
+     *
+     * @param  array<string, string>  $delimiters  sanitized opener => closer map
+     */
+    public static function isSpanWrappedToken(string $token, array $delimiters): bool
+    {
+        foreach ($delimiters as $open => $close) {
+            if (strlen($token) > strlen((string) $open) + strlen($close)
+                && str_starts_with($token, (string) $open)
+                && str_ends_with($token, $close)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * an all-caps unknown token that reads as a credential candidate ("FACS"):
      * at least two letters, not bracket/quote-wrapped. Callers still gate on
      * dictionary membership and uniform-uppercase input.

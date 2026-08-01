@@ -2,10 +2,15 @@
 
 namespace Iliaal\NameParser\Language;
 
+use Iliaal\NameParser\ConnectorsInterface;
 use Iliaal\NameParser\LanguageInterface;
 
-class German implements LanguageInterface
+class German implements LanguageInterface, ConnectorsInterface
 {
+    public const array CONNECTORS = [
+        'und' => 'und',
+    ];
+
     public const array SUFFIXES = [
         '1' => '1.',
         '2' => '2.',
@@ -60,5 +65,14 @@ class German implements LanguageInterface
     public function getLastnamePrefixes(): array
     {
         return self::LASTNAME_PREFIXES;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    #[\Override]
+    public function getConnectors(): array
+    {
+        return self::CONNECTORS;
     }
 }

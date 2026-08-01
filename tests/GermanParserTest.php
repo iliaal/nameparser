@@ -135,4 +135,41 @@ class GermanParserTest extends TestCase
         $this->assertSame('Smith', $name->getLastname());
         $this->assertSame('', $name->getSuffix());
     }
+
+    public function testGermanJointHonorificConnector(): void
+    {
+        // "und" comes from German::getConnectors(); without it the conjunction
+        // was title-cased into the first name and Frau exported as middle name
+        $name = (new Parser([new German()]))->parse('Herr und Frau Schmidt');
+
+        $this->assertSame('Herr und Frau', $name->getSalutation());
+        $this->assertSame(['Herr', 'Frau'], $name->getSalutations());
+        $this->assertSame('', $name->getFirstname());
+        $this->assertSame('', $name->getMiddlename());
+        $this->assertSame('Schmidt', $name->getLastname());
+        $this->assertTrue($name->isJoint());
+
+        $partner = $name->getPartner();
+        $this->assertNotNull($partner);
+        $this->assertSame('Frau', $partner->getSalutation());
+        $this->assertSame('Schmidt', $partner->getLastname());
+    }
+
+    public function testGermanJointHonorificWithEnglishFirst(): void
+    {
+        $name = (new Parser([new English(), new German()]))->parse('Herr und Frau Schmidt');
+
+        $this->assertSame('Herr und Frau', $name->getSalutation());
+        $this->assertTrue($name->isJoint());
+        $this->assertSame('Schmidt', $name->getLastname());
+    }
+
+    public function testEnglishConnectorStillWorksAlongsideGerman(): void
+    {
+        $name = (new Parser([new English(), new German()]))->parse('Mr. and Mrs. Brad Smith');
+
+        $this->assertSame('Mr. and Mrs.', $name->getSalutation());
+        $this->assertTrue($name->isJoint());
+        $this->assertSame('Brad', $name->getFirstname());
+    }
 }

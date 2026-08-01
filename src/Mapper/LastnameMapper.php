@@ -3,6 +3,7 @@
 namespace Iliaal\NameParser\Mapper;
 
 use Iliaal\NameParser\Part\AbstractPart;
+use Iliaal\NameParser\Part\Ignored;
 use Iliaal\NameParser\Part\Lastname;
 use Iliaal\NameParser\Part\LastnamePrefix;
 use Iliaal\NameParser\Part\Nickname;
@@ -59,6 +60,13 @@ class LastnameMapper extends AbstractMapper
 
         while (--$k >= 0) {
             $part = $parts[$k];
+
+            // a nickname between surname tokens is transparent: the scan must
+            // bind past it ("Hidalgo (Hid) Castillo") instead of stranding the
+            // far-side tokens as invisible raw strings
+            if ($part instanceof Nickname) {
+                continue;
+            }
 
             if ($part instanceof AbstractPart) {
                 break;
@@ -137,9 +145,22 @@ class LastnameMapper extends AbstractMapper
         $k = count($parts);
 
         while (--$k >= 0) {
-            if (! $this->isIgnoredPart($parts[$k])) {
-                break;
+            $part = $parts[$k];
+
+            if ($this->isIgnoredPart($part)) {
+                continue;
             }
+
+            // a trailing letterless placeholder ("John Smith -") is not a
+            // surname; leave it raw so the real surname still binds. An
+            // ASCII-alnum first byte short-circuits the common name token.
+            if (is_string($part)
+                && ($part === '' || ! ctype_alnum($part[0]))
+                && preg_match('/[\p{L}\p{N}]/u', $part) !== 1) {
+                continue;
+            }
+
+            break;
         }
 
         return $k;
@@ -163,7 +184,9 @@ class LastnameMapper extends AbstractMapper
             return true;
         }
 
-        $lastPart = $parts[$k + 1];
+        // judge the stop against the next surname-relevant part; an extracted
+        // nickname between surname tokens is transparent to the heuristic
+        $lastPart = $parts[$this->skipNicknameParts($parts, $k + 1)];
 
         if ($lastPart instanceof LastnamePrefix) {
             return true;
@@ -183,7 +206,10 @@ class LastnameMapper extends AbstractMapper
      */
     protected function isIgnoredPart(AbstractPart|string $part): bool
     {
-        return $part instanceof Suffix || $part instanceof Nickname || $part instanceof Salutation;
+        return $part instanceof Suffix
+            || $part instanceof Nickname
+            || $part instanceof Salutation
+            || $part instanceof Ignored;
     }
 
     /**
@@ -208,8 +234,9 @@ class LastnameMapper extends AbstractMapper
 
             // a lone suffix or salutation is not a surname: "Dr., John" keeps
             // "Dr." a Salutation rather than promoting it to Lastname when the
-            // surname segment carried no actual name token
-            if ($part instanceof Suffix || $part instanceof Salutation) {
+            // surname segment carried no actual name token. An ignored
+            // connector ("John Smith and") is not a surname either.
+            if ($part instanceof Suffix || $part instanceof Salutation || $part instanceof Ignored) {
                 continue;
             }
 

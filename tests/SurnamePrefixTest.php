@@ -375,4 +375,17 @@ class SurnamePrefixTest extends TestCase
         $this->assertSame($initials, $name->getInitials(), "initials for '$input'");
         $this->assertSame($last, $name->getLastname(), "last name for '$input'");
     }
+
+    public function testParticleBindsPastMidNameNickname(): void
+    {
+        // the reverse surname scan looks through the nickname, so the particle
+        // still binds to the surname instead of demoting to a middle name
+        $name = (new Parser())->parse('John van (Willy) Berg');
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('van Berg', $name->getLastname());
+        $this->assertSame('van', $name->getLastnamePrefix());
+        $this->assertSame('Willy', $name->getNickname());
+        $this->assertSame('', $name->getMiddlename());
+    }
 }

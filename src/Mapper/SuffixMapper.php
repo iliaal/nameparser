@@ -3,6 +3,7 @@
 namespace Iliaal\NameParser\Mapper;
 
 use Iliaal\NameParser\Part\AbstractPart;
+use Iliaal\NameParser\Part\Ignored;
 use Iliaal\NameParser\Part\Nickname;
 use Iliaal\NameParser\Part\Suffix;
 use Iliaal\NameParser\Text;
@@ -57,13 +58,30 @@ class SuffixMapper extends AbstractMapper
     ];
 
     /**
+     * @var array<string, string>
+     */
+    private array $spanDelimiters;
+
+    private string $spanDelimiterBytes;
+
+    /**
      * @param  array<int|string, string>  $suffixes
+     * @param  array<string, string>  $nicknameDelimiters  lets the suffix scan
+     *   recognize a token that belongs to a multi-token nickname span ("Jr)")
+     *   and leave it for NicknameMapper instead of consuming it as a credential
      */
     public function __construct(
         protected array $suffixes,
         protected bool $matchSinglePart = false,
         protected int $reservedParts = 2,
-    ) {}
+        array $nicknameDelimiters = [],
+    ) {
+        $this->spanDelimiters = Text::sanitizeNicknameDelimiters($nicknameDelimiters);
+        $this->spanDelimiterBytes = implode('', array_merge(
+            array_keys($this->spanDelimiters),
+            array_values($this->spanDelimiters),
+        ));
+    }
 
     public function matchesSinglePart(): bool
     {
@@ -119,9 +137,11 @@ class SuffixMapper extends AbstractMapper
             $uniformUpper = $this->isUniformUpperContext($parts, $this->uniformUpperOverride);
 
             if (! $uniformUpper) {
+                // the run may skip over nickname parts, so continue from the
+                // slot after its last mapped index, not from its length
                 $leadingCandidateIndexes = $this->mapLeadingUnknownCredentialRun(
                     $parts,
-                    count($leadingSuffixIndexes),
+                    $leadingSuffixIndexes[count($leadingSuffixIndexes) - 1] + 1,
                 );
             }
         }
@@ -144,7 +164,10 @@ class SuffixMapper extends AbstractMapper
 
             $part = $parts[$k];
 
-            if ($part instanceof Nickname) {
+            // decoration parts are transparent to the credential scan: a
+            // nickname or an ignored connector ("MD & PhD") sits inside the
+            // tail without ending it
+            if ($part instanceof Nickname || $part instanceof Ignored) {
                 continue;
             }
 
@@ -186,6 +209,14 @@ class SuffixMapper extends AbstractMapper
                 continue;
             }
 
+            // the closer token of a multi-token nickname span keys as a suffix
+            // ("Jr)" in "(Bob Jr)"); consuming it would orphan the opener and
+            // shred the span. A stray closer with no earlier opener
+            // ("John Smith MD)") is ordinary trailing punctuation and maps.
+            if ($this->isSpanTailToken($parts, $k)) {
+                break;
+            }
+
             if (! $this->canMapAtIndex($parts, $part, $k)) {
                 break;
             }
@@ -205,6 +236,32 @@ class SuffixMapper extends AbstractMapper
         // tail; with none, the outcome stays byte-identical to no stripping.
         if ($suffixIndexes === []) {
             return $parts;
+        }
+
+        // a given segment must not map entirely to credentials when it started
+        // with name-shaped tokens: "Smith, JOHN MD" keeps JOHN as the first
+        // name, same as the comma-separated "Smith, JOHN, MD". Candidates left
+        // of the leftmost dictionary suffix are the name, not stray creds.
+        if ($this->reservedParts === 0 && $candidateIndexes !== []) {
+            /** @var array<int, true> $creditSet */
+            $creditSet = array_fill_keys($suffixIndexes, true) + $candidateIndexes + $noiseIndexes;
+            $hasSurvivor = false;
+            foreach ($parts as $i => $survivor) {
+                if (is_string($survivor) && ! isset($creditSet[$i])) {
+                    $hasSurvivor = true;
+
+                    break;
+                }
+            }
+
+            if (! $hasSurvivor) {
+                $minDictionaryIndex = min($suffixIndexes);
+                foreach (array_keys($candidateIndexes) as $i) {
+                    if ($i < $minDictionaryIndex) {
+                        unset($candidateIndexes[$i]);
+                    }
+                }
+            }
         }
 
         return $this->rewriteCredentialTail($parts, $suffixIndexes, $noiseIndexes, $candidateIndexes);
@@ -313,6 +370,19 @@ class SuffixMapper extends AbstractMapper
             return false;
         }
 
+        // a single letter after a real given name in a comma given segment is a
+        // middle initial, not a roman-numeral suffix: "Lapin, Michelle I" is
+        // registry LAST, FIRST MI form. A credential-only segment ("Smith, MD I")
+        // has no preceding name token and keeps the roman reading. Digit keys
+        // (German ordinals "2.") carry no initial reading and are exempt.
+        $key = $this->getKey($part);
+        if ($this->reservedParts === 0
+            && mb_strlen($key, 'UTF-8') < 2
+            && preg_match('/\p{L}/u', $key) === 1
+            && $this->hasPrecedingNameToken($parts, $index)) {
+            return false;
+        }
+
         if ($index > $this->reservedParts - 1) {
             return true;
         }
@@ -356,6 +426,12 @@ class SuffixMapper extends AbstractMapper
 
         for (; $k < $count; $k++) {
             $part = $parts[$k];
+
+            // an already-extracted nickname does not end the leading run:
+            // "Smith, (Doc) MD John" still carries the credential run
+            if ($part instanceof Nickname) {
+                continue;
+            }
 
             if (! is_string($part) || ! $this->isSuffix($part)) {
                 break;
@@ -401,6 +477,10 @@ class SuffixMapper extends AbstractMapper
 
         for ($index = $start; $index < count($parts); $index++) {
             $part = $parts[$index];
+            if ($part instanceof Nickname) {
+                continue;
+            }
+
             if (! is_string($part) || ! $this->isUnknownCredentialCandidate($part)) {
                 break;
             }
@@ -409,6 +489,79 @@ class SuffixMapper extends AbstractMapper
         }
 
         return $run;
+    }
+
+    /**
+     * true when the token's unbalanced closing delimiter pairs with an
+     * unmatched opener in an earlier raw token, i.e. the token is the tail of
+     * a multi-token nickname span ("(Bob Jr)"). A self-contained "(MD)" is
+     * balanced, and a stray closer with no earlier opener is not a span tail.
+     *
+     * @param  PartArray  $parts
+     */
+    private function isSpanTailToken(array $parts, int $index): bool
+    {
+        $part = $parts[$index];
+        if (! is_string($part)
+            || $this->spanDelimiterBytes === ''
+            || strpbrk($part, $this->spanDelimiterBytes) === false) {
+            return false;
+        }
+
+        foreach ($this->spanDelimiters as $open => $close) {
+            $open = (string) $open;
+            $symmetric = $open === $close;
+
+            if ($symmetric) {
+                if (substr_count($part, $open) % 2 !== 1) {
+                    continue;
+                }
+            } elseif (substr_count($part, $close) <= substr_count($part, $open)) {
+                continue;
+            }
+
+            for ($j = 0; $j < $index; $j++) {
+                $previous = $parts[$j];
+                if (! is_string($previous)) {
+                    continue;
+                }
+
+                if ($symmetric
+                    ? substr_count($previous, $open) % 2 === 1
+                    : substr_count($previous, $open) > substr_count($previous, $close)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * whether a raw name-shaped token (letters, not a credential, not noise)
+     * precedes the given index; decoration parts and extracted nicknames are
+     * transparent to the check
+     *
+     * @param  PartArray  $parts
+     */
+    private function hasPrecedingNameToken(array $parts, int $index): bool
+    {
+        for ($i = 0; $i < $index; $i++) {
+            $part = $parts[$i];
+            if (! is_string($part)) {
+                continue;
+            }
+
+            if ($this->isSuffix($part) || Text::isCredentialTailNoise($part)) {
+                continue;
+            }
+
+            if (Text::letters($part) !== '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -435,15 +588,29 @@ class SuffixMapper extends AbstractMapper
      */
     private function isPrecededBySingleInitial(array $parts, int $index): bool
     {
-        $previous = $parts[$index - 1] ?? null;
+        // a nickname between the initial and the token must not flip the
+        // classification ("John A (Bob) MA" reads like "John A MA"), whether it
+        // was already extracted or is still a raw self-contained span
+        for ($i = $index - 1; $i >= 0; $i--) {
+            $previous = $parts[$i];
 
-        if (! is_string($previous)) {
-            return false;
+            if ($previous instanceof Nickname) {
+                continue;
+            }
+
+            if (is_string($previous)
+                && Text::isSpanWrappedToken($previous, $this->spanDelimiters)) {
+                continue;
+            }
+
+            if (! is_string($previous)) {
+                return false;
+            }
+
+            return Text::graphemeLengthUpTo(Text::letters($previous), 2) === 1;
         }
 
-        $letters = Text::letters($previous);
-
-        return Text::graphemeLengthUpTo($letters, 2) === 1;
+        return false;
     }
 
     protected function isUpperCase(string $part): bool
