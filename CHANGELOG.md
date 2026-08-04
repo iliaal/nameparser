@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-08-04
+
 ### Added
 
 - Joint salutations parse as one honorific, so `Mr. and Mrs. Brad Smith` keeps `Brad` as the first name instead of reading the connector as one (`Mr. & Mrs.` normalizes to the same value). Any pairing works (`Dr. and Mrs.`, `Ms. & Ms.`), and the connector needs a title on both sides, so `Mr. and Brad Smith` is left alone. Fixes #4.
@@ -178,7 +180,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `setWhitespace()` now trims the configured characters from the edges of the input.
 - `setMaxSalutationIndex()` larger than the token count no longer emits undefined-array-key warnings.
 
-[Unreleased]: https://github.com/iliaal/nameparser/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/iliaal/nameparser/compare/1.4.0...HEAD
+[1.4.0]: https://github.com/iliaal/nameparser/compare/v1.3.0...1.4.0
 [1.3.0]: https://github.com/iliaal/nameparser/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/iliaal/nameparser/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/iliaal/nameparser/compare/v1.0.0...v1.1.0
