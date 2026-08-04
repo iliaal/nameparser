@@ -68,6 +68,13 @@ ambiguous cases.
   into initials `D E` and `L E`. Both keep the particle now. Irish `Ó`, `Ní`,
   `Nic`, `Uí`, `Ua`, and `Mhic` are in the default dictionary and render
   capitalised.
+- **English honorifics that are also surnames.** `Dame`, `Lady`, `Lord`,
+  `Pastor`, `Professor`, `Reverend`, and `Rt Hon` are in the default dictionary,
+  so `"Lord Ashcroft"` reads as a title plus surname instead of a first name plus
+  surname. `Rt Hon` also matches its abbreviated and article-led forms
+  (`"Rt. Hon. Boris Johnson"`, `"The Rt Hon Boris Johnson"`). Several of these
+  are real surnames as well, which is why the confidence pass flags the bare
+  two-token form.
 
 ## Requirements
 
