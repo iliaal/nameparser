@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- A comma tail of unrecognized credentials no longer swallows the whole name. Since 1.3.0, `Christina Nemec, LMHP` read the tail as the given name and the rest as the surname, reporting first name `Lmhp` and last name `Christina Nemec`; the credential dictionary was the only thing standing between a correct split and a wrecked one, so `John Smith, MD` was fine while `John Smith, XYZ` was not. A tail whose tokens are all upper case, with at least one outside the dictionary, is now read as a credential run whenever the left side already carries a given name of its own. Spaced and numbered remainders ride along with it (`Lori Shelley, PHARM D`, `Leon Ellerb, OTA/L 2838`). First and last accuracy over 30,000 NPPES rows rises from 95.94% to 97.18%.
+- The surname-only comma form is unchanged, so `Smith, JOHN, MD` still keeps `John` as the given name, `Hidalgo Castillo, Maria` still keeps the compound surname, and `Nguyen, VI` still reads `VI` the way the dictionary says. Uniform-case input carries no casing signal and is left alone, and a tail of nothing but single letters or digits never promotes on its own (`Samuel Assam, P`).
+
 ## [1.4.0] - 2026-08-04
 
 ### Added

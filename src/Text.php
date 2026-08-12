@@ -164,6 +164,20 @@ final class Text
     }
 
     /**
+     * a token that carries no lowercase letter, so it cannot be a title-case
+     * name part: the spaced remainder of a credential ("D" in "PHARM D"), a
+     * registration number ("2838"), or stray punctuation. Too weak to mark a
+     * tail as credentials on its own; callers require a real candidate beside
+     * it.
+     */
+    public static function isCredentialTailRider(string $token): bool
+    {
+        $letters = self::letters($token);
+
+        return $letters === mb_strtoupper($letters, 'UTF-8');
+    }
+
+    /**
      * true when the word's letters are all uppercase and carry a case signal
      * (letters exist and are not caseless)
      */

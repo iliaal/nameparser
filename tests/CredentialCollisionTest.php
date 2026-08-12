@@ -99,6 +99,35 @@ class CredentialCollisionTest extends TestCase
             // legal credential
             'comma JD'                            => ['King, Michelle JD', 'Michelle', 'King', 'JD'],
             'comma JD and LPC'                    => ['King, Michelle JD, LPC', 'Michelle', 'King', 'JD LPC'],
+
+            // a comma tail of unknown all-caps credentials, where the left side
+            // already carries a given name, is a credential run and not the
+            // given name of a two-token surname
+            'comma unknown credential'            => ['Christina Nemec, LMHP', 'Christina', 'Nemec', 'LMHP'],
+            'comma unknown credential, arbitrary' => ['John Smith, XYZ', 'John', 'Smith', 'XYZ'],
+            'comma unknown credential, salutation' => ['Mrs. Natalie Sutton, RDH', 'Natalie', 'Sutton', 'RDH'],
+            'comma unknown then known credential' => ['Sharonda Yates, MOT, OTR/L', 'Sharonda', 'Yates', 'MOT OTR/L'],
+            'comma unknown credential, middle name' => ['Scott Kay Andersen, LCPC', 'Scott', 'Andersen', 'LCPC'],
+            'comma spaced credential remainder'   => ['Lori Shelley, PHARM D', 'Lori', 'Shelley', 'PHARM D'],
+            'comma credential with registration'  => ['Leon Ellerb, OTA/L 2838', 'Leon', 'Ellerb', 'OTA/L 2838'],
+
+            // ... but a surname-only left side keeps the ordinary comma
+            // reading, so the tail is still the given name
+            'comma given name stays given, caps'  => ['Smith, JOHN, MD', 'John', 'Smith', 'MD'],
+            'comma given name stays given'        => ['Hidalgo Castillo, Maria', 'Maria', 'Hidalgo Castillo', ''],
+            'comma name-colliding cred stays'     => ['Nguyen, VI', '', 'Nguyen', 'VI'],
+            // a tail of nothing but riders never promotes: "P" stays an initial
+            // under the ordinary comma reading rather than becoming a credential
+            'comma lone initial is not a cred'    => ['Samuel Assam, P', '', 'Samuel Assam', ''],
+
+            // a dictionary credential written in a non-canonical case still
+            // renders canonically through this path
+            'comma non-canonical known credential' => ['Donna Barrett, PHARMD', 'Donna', 'Barrett', 'PharmD'],
+            'comma punctuated known credential'   => ['George Nasser, M.D.', 'George', 'Nasser', 'MD'],
+
+            // uniform-case input carries no casing signal, so the comma reading
+            // is left alone
+            'uniform caps comma tail'             => ['NEMEC, CHRISTINA', 'Christina', 'Nemec', ''],
         ];
     }
 

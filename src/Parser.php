@@ -227,6 +227,23 @@ class Parser
      */
     private function parseSplitParts(string $surname, array $givenParts, bool $uniformUpper): Name
     {
+        // a comma tail of all-caps unknown tokens is a credential run, not a
+        // given name, once the left side already carries a given name of its
+        // own: "Christina Nemec, LMHP" is Western order plus a credential, not
+        // a surname "Christina Nemec" given-named "LMHP". Surname-only left
+        // sides ("Nguyen, VI") keep the comma reading, and uniform-case input
+        // carries no casing signal to read either way.
+        if (! $uniformUpper && ! $this->surnameFirst && $this->isUnknownCredentialTail($givenParts)) {
+            $western = $this->getFirstSegmentParser()->parse($surname);
+
+            if ($this->hasGivenNameParts($western)) {
+                return $this->makeName(array_merge(
+                    $western->getParts(),
+                    $this->creditTailParts($givenParts),
+                ));
+            }
+        }
+
         $secondSegment = $this->getSecondSegmentParser();
         $this->secondSegmentInitialMapper?->setUniformUpperOverride($uniformUpper);
         foreach ($this->secondSegmentSuffixMappers as $mapper) {
@@ -631,6 +648,87 @@ class Parser
         }
 
         return $hasUpper;
+    }
+
+    /**
+     * every token of a comma tail reads as a credential, with at least one not
+     * in the dictionary. An already-mapped Suffix rides along, so a mixed tail
+     * ("Yates, MOT, OTR/L") still qualifies; anything name-shaped disqualifies.
+     *
+     * @param  array<int, \Iliaal\NameParser\Part\AbstractPart|string>  $givenParts
+     */
+    private function isUnknownCredentialTail(array $givenParts): bool
+    {
+        $suffixes = $this->getSuffixes();
+        $hasUnknown = false;
+
+        foreach ($givenParts as $part) {
+            if ($part instanceof Suffix) {
+                continue;
+            }
+
+            if (! is_string($part)) {
+                return false;
+            }
+
+            if ($part === '') {
+                continue;
+            }
+
+            if (Text::isUnknownCredentialCandidate($part)) {
+                // a wholly in-dictionary tail is already routed correctly by
+                // the ordinary comma pipeline, which also canonicalizes the
+                // rendering ("PHD" to "PhD"); only an unknown token needs this
+                // path.
+                if (! array_key_exists(Text::key($part), $suffixes)) {
+                    $hasUnknown = true;
+                }
+
+                continue;
+            }
+
+            // a spaced or numbered credential ("PHARM D", "OTA/L 2838") leaves
+            // tokens too short or too digit-heavy to stand as candidates on
+            // their own. They ride along beside a real one; a tail of nothing
+            // but riders never qualifies, so a lone "Assam, P" keeps the comma
+            // reading rather than guessing the initial is a credential.
+            if (Text::isCredentialTailRider($part)) {
+                continue;
+            }
+
+            return false;
+        }
+
+        return $hasUnknown;
+    }
+
+    /**
+     * @param  array<int, \Iliaal\NameParser\Part\AbstractPart|string>  $givenParts
+     * @return array<int, \Iliaal\NameParser\Part\AbstractPart>
+     */
+    private function creditTailParts(array $givenParts): array
+    {
+        $suffixes = $this->getSuffixes();
+        $parts = [];
+
+        foreach ($givenParts as $part) {
+            if (! is_string($part)) {
+                $parts[] = $part;
+
+                continue;
+            }
+
+            if ($part === '') {
+                continue;
+            }
+
+            $key = Text::key($part);
+            $parts[] = array_key_exists($key, $suffixes)
+                ? new Suffix($part, $suffixes[$key])
+                : new Suffix($part);
+        }
+
+        return $parts;
     }
 
     protected function hasGivenNameParts(Name $name): bool
