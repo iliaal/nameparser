@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-08-12
+
 ### Fixed
 
 - A comma tail of unrecognized credentials no longer swallows the whole name. Since 1.3.0, `Christina Nemec, LMHP` read the tail as the given name and the rest as the surname, reporting first name `Lmhp` and last name `Christina Nemec`; the credential dictionary was the only thing standing between a correct split and a wrecked one, so `John Smith, MD` was fine while `John Smith, XYZ` was not. A tail whose tokens are all upper case, with at least one outside the dictionary, is now read as a credential run whenever the left side already carries a given name of its own. Spaced and numbered remainders ride along with it (`Lori Shelley, PHARM D`, `Leon Ellerb, OTA/L 2838`). First and last accuracy over 30,000 NPPES rows rises from 95.94% to 97.18%.
@@ -185,7 +187,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `setWhitespace()` now trims the configured characters from the edges of the input.
 - `setMaxSalutationIndex()` larger than the token count no longer emits undefined-array-key warnings.
 
-[Unreleased]: https://github.com/iliaal/nameparser/compare/1.4.0...HEAD
+[Unreleased]: https://github.com/iliaal/nameparser/compare/1.4.1...HEAD
+[1.4.1]: https://github.com/iliaal/nameparser/compare/1.4.0...1.4.1
 [1.4.0]: https://github.com/iliaal/nameparser/compare/v1.3.0...1.4.0
 [1.3.0]: https://github.com/iliaal/nameparser/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/iliaal/nameparser/compare/v1.1.0...v1.2.0
