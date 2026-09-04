@@ -139,10 +139,11 @@ class Parser
     /**
      * already-split comma tails stashed by parse() for the overridable
      * parseSplitName() hook (np-cr-006), as a stack of [given, tail] pairs.
-     * The hook consumes (pops) the head pair only when its given string
-     * matches the hook's $given, so a re-entrant parse() for another input
-     * (a subclass override routing a second name through the hook first)
-     * neither consumes nor overwrites the outer tail (np-r2-02).
+     * The hook only peeks at the head pair when its given string matches
+     * the hook's $given; the pushing parse() owns the pop in its finally,
+     * so a re-entrant parse() for another input (a subclass override
+     * routing a second name through parse() first) pushes and pops its own
+     * entry without disturbing the outer tail (np-r2-02, np-r3-01).
      *
      * @var list<array{0: string, 1: list<string>}>
      */
@@ -255,17 +256,16 @@ class Parser
     protected function parseSplitName(string $surname, string $given): Name
     {
         // parse() stashes the already-split tail so this hook avoids a
-        // re-split; the head pair is consumed only when its given string
-        // matches this call's $given, so a re-entrant hook invocation for
-        // another input splits fresh instead of stealing the outer tail
-        // (np-r2-02). Direct callers (and nested surname-first recursion)
-        // fall back to splitting $given.
+        // re-split; the head pair is read (not consumed) only when its given
+        // string matches this call's $given, so a re-entrant parse() for
+        // another input leaves the outer tail on top for the outer call's
+        // finally (np-r2-02, np-r3-01). Direct callers (and nested
+        // surname-first recursion) fall back to splitting $given.
         $tailSegments = null;
         $head = end($this->preSplitTailStack);
 
         if ($head !== false && $head[0] === $given) {
             $tailSegments = $head[1];
-            array_pop($this->preSplitTailStack);
         }
 
         return $this->parseSplitNameSegments($surname, $given, $tailSegments ?? $this->splitStructuralCommas($given));

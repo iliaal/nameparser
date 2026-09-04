@@ -64,6 +64,126 @@ class RemediationRound2Test extends TestCase
         $this->assertSame((string) (new Parser())->parse('Smith, John, PhD'), (string) $outer);
     }
 
+    // np-r3-01: a re-entrant $this->parse() inside a parseSplitName
+    // override pushes and pops its own stash entry: the hook only peeks,
+    // so the outer tail is still on top when the inner parse returns,
+    // at depth>1 and on the exception path.
+    public function testReentrantParseInsideHookKeepsStackBalanced(): void
+    {
+        $parser = new class extends Parser {
+            /**
+             * @var list<string>
+             */
+            public array $givens = [];
+
+            /**
+             * @var list<mixed>
+             */
+            public array $headsBefore = [];
+
+            /**
+             * @var array<int, mixed>
+             */
+            public array $headsAfter = [];
+
+            /**
+             * @var list<Name>
+             */
+            public array $diverted = [];
+
+            private int $dives = 0;
+
+            protected function parseSplitName(string $surname, string $given): Name
+            {
+                if ($this->dives < 2) {
+                    ++$this->dives;
+
+                    try {
+                        $stack = (new ReflectionProperty(Parser::class, 'preSplitTailStack'))->getValue($this);
+                        \PHPUnit\Framework\Assert::assertIsArray($stack);
+                        $at = count($this->headsBefore);
+                        $this->givens[] = $given;
+                        $this->headsBefore[] = end($stack);
+                        $this->diverted[] = $this->parse('Doe, Jane, MD');
+                        $stack = (new ReflectionProperty(Parser::class, 'preSplitTailStack'))->getValue($this);
+                        \PHPUnit\Framework\Assert::assertIsArray($stack);
+                        $this->headsAfter[$at] = end($stack);
+                    } finally {
+                        --$this->dives;
+                    }
+                }
+
+                return parent::parseSplitName($surname, $given);
+            }
+        };
+
+        $outer = $parser->parse('Smith, John, PhD');
+
+        $this->assertSame((string) (new Parser())->parse('Smith, John, PhD'), (string) $outer);
+        $this->assertCount(2, $parser->diverted);
+
+        foreach ($parser->diverted as $name) {
+            $this->assertSame((string) (new Parser())->parse('Doe, Jane, MD'), (string) $name);
+        }
+
+        // every diving level saw its own tail restored: the inner parse
+        // left the outer entry untouched on top of the stack
+        $this->assertSame([' John, PhD', ' Jane, MD'], $parser->givens);
+        $this->assertCount(2, $parser->headsBefore);
+        $this->assertCount(2, $parser->headsAfter);
+
+        foreach ($parser->headsAfter as $i => $after) {
+            $this->assertSame($parser->headsBefore[$i], $after);
+            $this->assertIsArray($after);
+            $this->assertSame($parser->givens[$i], $after[0]);
+        }
+
+        $stack = (new ReflectionProperty(Parser::class, 'preSplitTailStack'))->getValue($parser);
+        $this->assertSame([], $stack);
+
+        // exception path: a throw out of the hook still unwinds the stash
+        // and leaves the parser reusable
+        $throwing = new class extends Parser {
+            private bool $reentered = false;
+
+            private bool $detonated = false;
+
+            protected function parseSplitName(string $surname, string $given): Name
+            {
+                if (! $this->reentered) {
+                    $this->reentered = true;
+
+                    try {
+                        $this->parse('Doe, Jane, MD');
+                    } finally {
+                        $this->reentered = false;
+                    }
+
+                    if (! $this->detonated) {
+                        $this->detonated = true;
+
+                        throw new \RuntimeException('hook boom');
+                    }
+                }
+
+                return parent::parseSplitName($surname, $given);
+            }
+        };
+
+        try {
+            $throwing->parse('Smith, John, PhD');
+            $this->fail('expected hook exception');
+        } catch (\RuntimeException) {
+        }
+
+        $stack = (new ReflectionProperty(Parser::class, 'preSplitTailStack'))->getValue($throwing);
+        $this->assertSame([], $stack);
+        $this->assertSame(
+            (string) (new Parser())->parse('Smith, John, PhD'),
+            (string) $throwing->parse('Smith, John, PhD'),
+        );
+    }
+
     // np-r2-03: resyncing a promoted default list through the factory
     // element builders yields the factory-built pipeline and parses
     // identically to a fresh parser with the same config
@@ -219,10 +339,43 @@ class RemediationRound2Test extends TestCase
         $classes = array_map(static fn(object $mapper): string => $mapper::class, $pipeline);
         $this->assertContains(FirstnameMapper::class, $classes);
 
+        // Parser::getMappers() routes through the factory default pipeline,
+        // so its firstname stage equals a factory-built element
+        $defaultMappers = $parser->getMappers();
+        $defaultClasses = array_map(static fn(object $mapper): string => $mapper::class, $defaultMappers);
+        $this->assertContains(FirstnameMapper::class, $defaultClasses);
+        $this->assertEquals(SegmentParserFactory::newFirstnameMapper(), self::findFirstnameMapper($defaultMappers));
+
         $parser->parse('Smith, John');
         $secondSegment = (new ReflectionProperty(Parser::class, 'secondSegmentParser'))->getValue($parser);
         $this->assertInstanceOf(Parser::class, $secondSegment);
-        $secondClasses = array_map(static fn(object $mapper): string => $mapper::class, $secondSegment->getMappers());
+        $secondMappers = $secondSegment->getMappers();
+        $secondClasses = array_map(static fn(object $mapper): string => $mapper::class, $secondMappers);
         $this->assertContains(FirstnameMapper::class, $secondClasses);
+        $this->assertEquals(SegmentParserFactory::newFirstnameMapper(), self::findFirstnameMapper($secondMappers));
+
+        // both Parser construction sites route through the factory element
+        // builder, so a factory default change cannot leave an inline site
+        // stale (np-r3-02): reverting either site to `new FirstnameMapper()`
+        // fails this pin.
+        $file = (new ReflectionClass(Parser::class))->getFileName();
+        $this->assertIsString($file);
+        $src = (string) file_get_contents($file);
+        $this->assertSame(2, substr_count($src, 'SegmentParserFactory::newFirstnameMapper()'));
+        $this->assertStringNotContainsString('new FirstnameMapper(', $src);
+    }
+
+    /**
+     * @param array<int, object> $mappers
+     */
+    private static function findFirstnameMapper(array $mappers): FirstnameMapper
+    {
+        foreach ($mappers as $mapper) {
+            if ($mapper instanceof FirstnameMapper) {
+                return $mapper;
+            }
+        }
+
+        self::fail('no FirstnameMapper stage in pipeline');
     }
 }
