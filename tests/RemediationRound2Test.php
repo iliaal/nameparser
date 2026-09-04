@@ -29,7 +29,6 @@ class RemediationRound2Test extends TestCase
     public function testCanonicalPartsPinsDictionaryRendering(): void
     {
         $method = new ReflectionMethod(AbstractMapperTestCase::class, 'canonicalParts');
-        $method->setAccessible(true);
 
         $canonical = $method->invoke(null, [new Suffix('PHD', 'PhD')]);
         $drifted = $method->invoke(null, [new Suffix('PHD', 'PHD')]);
@@ -256,7 +255,6 @@ class RemediationRound2Test extends TestCase
     {
         $parser = new Parser();
         $gate = new ReflectionMethod(Parser::class, 'isUniformUpperInput');
-        $gate->setAccessible(true);
 
         $this->assertTrue($gate->invoke($parser, 'AB CD AB CD'));
 
@@ -274,7 +272,6 @@ class RemediationRound2Test extends TestCase
         $this->assertIsInt($cap);
 
         $analyze = new ReflectionMethod(Parser::class, 'analyzeToken');
-        $analyze->setAccessible(true);
 
         $last = '';
 

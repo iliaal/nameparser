@@ -322,14 +322,12 @@ class AdvisoryParityRemediationTest extends TestCase
     private function setProtected(object $object, string $property, mixed $value): void
     {
         $ref = new ReflectionProperty($object, $property);
-        $ref->setAccessible(true);
         $ref->setValue($object, $value);
     }
 
     private function getProtected(object $object, string $property): mixed
     {
         $ref = new ReflectionProperty($object, $property);
-        $ref->setAccessible(true);
 
         return $ref->getValue($object);
     }
