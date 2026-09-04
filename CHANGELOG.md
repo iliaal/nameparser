@@ -4,7 +4,33 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.5.0] - 2026-09-04
+
+### Added
+
+- `Text::isUniformUpperTokens()` is the single whole-input casing signal shared by the parser, the mappers, and `Confidence`, so caseless scripts and digit-only tokens read the same everywhere (`123` stays a name, never an initial).
+- `Text::clearCache()` releases the memoized key transforms for long-running importers; the key cache now evicts oldest-first a quarter at a time instead of dropping wholesale past 4,096 entries, and long tokens get their own memoized table.
+- `LastnameMapper::matchesSinglePart()/isSurnameOnly()`, `MiddlenameMapper::mapsWithoutLastname()`, and `SalutationMapper::requiresRemainder()` getters, so promoting `getMappers()` and changing configuration no longer silently resets segment-tuned flags.
+- `Name` records the parser's nickname delimiters and whitespace alongside the parse source, so `getConfidence()` on custom-delimiter parses agrees with the parse that produced the name; `getPartner()` now carries the source and confidence tokens too.
+
+### Changed
+
+- Invalid UTF-8 input is scrubbed at the top of `parse()` instead of degrading inconsistently across the `/u` code paths.
+- Control characters and bidi/format characters are stripped during normalization, so they can no longer survive into name fields and downstream exports.
+- Nickname delimiters containing a comma, NUL, whitespace, or control characters are ignored instead of silently corrupting the structural-comma split.
+- The token budget counts the same separator class the parser splits on, and the uniform-uppercase scan is capped, so hostile separator-heavy rows stay within the documented 65,536-token cost.
+- The structural-comma shield degrades to a bounded byte-level mask past 4 KB instead of switching off, keeping surname/given assignment stable on long rows.
+- `Smith, Jr` reads like `Smith, Junior` (Lastname plus given name) instead of a bare suffix with no given name.
+- `Parser` internals are split into `StructuralCommaSplitter`, `CommaCredentialTail`, and `SegmentParserFactory` with `TokenCredentialClass` replacing the credential classifier ints; `Name` dispatches on `::class` constants. No behavior change.
+
+### Fixed
+
+- Two algorithmic-complexity hot spots are linear: the suffix span-tail scan precomputes opener presence, and the confidence structural-comma check scans once instead of re-merging per boundary.
+- The comma path no longer re-normalizes, re-masks, and re-tokenizes the surname segment.
+- A literal NUL in input no longer collides with the comma-mask placeholder, and masking no longer mixes char-array offsets with byte offsets on invalid UTF-8.
+- The credential-tail noise purge is scoped and documented: placeholders drop globally while name-shaped tokens survive beside credentials (existing comma-credential expectations unchanged).
+- Mapper unit tests pin dictionary rendering, the golden corpus asserts exact case, and boundary rows (4 KB shield cliff, long-token casing, stray closers, caseless scripts, three-title joints, single-token surname-first tails) are locked. Performance gates prefer CPU time with a fixed-corpus throughput floor.
+
 
 ## [1.4.1] - 2026-08-12
 
@@ -187,7 +213,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `setWhitespace()` now trims the configured characters from the edges of the input.
 - `setMaxSalutationIndex()` larger than the token count no longer emits undefined-array-key warnings.
 
-[Unreleased]: https://github.com/iliaal/nameparser/compare/1.4.1...HEAD
+[Unreleased]: https://github.com/iliaal/nameparser/compare/1.5.0...HEAD
+[1.5.0]: https://github.com/iliaal/nameparser/compare/1.4.1...1.5.0
 [1.4.1]: https://github.com/iliaal/nameparser/compare/1.4.0...1.4.1
 [1.4.0]: https://github.com/iliaal/nameparser/compare/v1.3.0...1.4.0
 [1.3.0]: https://github.com/iliaal/nameparser/compare/v1.2.0...v1.3.0
