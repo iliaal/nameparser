@@ -50,9 +50,19 @@ final class SegmentParserFactory
             self::newSuffixMapper($suffixes, false, 2, $delimiters),
             self::newInitialMapper($maxCombinedInitials, false, $prefixes),
             self::newLastnameMapper($prefixes, $surnameSegmentBias),
-            new FirstnameMapper(),
+            self::newFirstnameMapper(),
             self::newMiddlenameMapper(false, $prefixes),
         ];
+    }
+
+    /**
+     * the one first-name stage (np-r2-07): the only element builder the
+     * default pipeline and the second-segment parser inlined, so a factory
+     * default/stage change had two stale sites
+     */
+    public static function newFirstnameMapper(): FirstnameMapper
+    {
+        return new FirstnameMapper();
     }
 
     /**

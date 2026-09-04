@@ -1,0 +1,228 @@
+<?php
+
+namespace Tests\Iliaal\NameParser;
+
+use Iliaal\NameParser\CommaCredentialTail;
+use Iliaal\NameParser\Mapper\FirstnameMapper;
+use Iliaal\NameParser\Mapper\InitialMapper;
+use Iliaal\NameParser\Mapper\SuffixMapper;
+use Iliaal\NameParser\Name;
+use Iliaal\NameParser\Parser;
+use Iliaal\NameParser\Part\Suffix;
+use Iliaal\NameParser\SegmentParserFactory;
+use Iliaal\NameParser\Text;
+use PHPUnit\Framework\TestCase;
+use ReflectionClass;
+use ReflectionMethod;
+use ReflectionProperty;
+use Tests\Iliaal\NameParser\Mapper\AbstractMapperTestCase;
+
+/**
+ * Remediation pins for the round-2 review beads (full-review 20260903).
+ * Each test names its bead.
+ */
+class RemediationRound2Test extends TestCase
+{
+    // np-r2-01: canonicalParts includes normalize(), so a dictionary
+    // rendering drift (same class + raw value, different rendered form)
+    // yields different descriptors and fails mapper unit tests
+    public function testCanonicalPartsPinsDictionaryRendering(): void
+    {
+        $method = new ReflectionMethod(AbstractMapperTestCase::class, 'canonicalParts');
+        $method->setAccessible(true);
+
+        $canonical = $method->invoke(null, [new Suffix('PHD', 'PhD')]);
+        $drifted = $method->invoke(null, [new Suffix('PHD', 'PHD')]);
+
+        $this->assertNotSame($canonical, $drifted);
+    }
+
+    // np-r2-02: a subclass hook routing another input through
+    // parseSplitName() first must not consume the outer stashed tail
+    public function testReentrantSplitHookKeepsOuterTail(): void
+    {
+        $parser = new class extends Parser {
+            public ?Name $diverted = null;
+
+            private bool $reentered = false;
+
+            protected function parseSplitName(string $surname, string $given): Name
+            {
+                if (! $this->reentered) {
+                    $this->reentered = true;
+                    $this->diverted = parent::parseSplitName('Doe', 'Jane, MD');
+                }
+
+                return parent::parseSplitName($surname, $given);
+            }
+        };
+
+        $outer = $parser->parse('Smith, John, PhD');
+
+        $this->assertNotNull($parser->diverted);
+        $this->assertSame((string) (new Parser())->parse('Doe, Jane, MD'), (string) $parser->diverted);
+        $this->assertSame((string) (new Parser())->parse('Smith, John, PhD'), (string) $outer);
+    }
+
+    // np-r2-03: resyncing a promoted default list through the factory
+    // element builders yields the factory-built pipeline and parses
+    // identically to a fresh parser with the same config
+    public function testResyncedMappersMatchFactoryBuilders(): void
+    {
+        $promoted = new Parser();
+        $promoted->setMappers($promoted->getMappers());
+        $promoted->setMaxSalutationIndex(2);
+        $promoted->setMaxCombinedInitials(1);
+
+        $expected = SegmentParserFactory::newDefaultPipeline(
+            false,
+            $promoted->getSalutations(),
+            $promoted->getMaxSalutationIndex(),
+            $promoted->getSuffixes(),
+            $promoted->getNicknameDelimiters(),
+            $promoted->getConnectors(),
+            $promoted->getMaxCombinedInitials(),
+            $promoted->getLastnamePrefixes(),
+        );
+        $actual = $promoted->getMappers();
+
+        $this->assertSame(count($expected), count($actual));
+
+        foreach ($expected as $i => $mapper) {
+            $this->assertSame($mapper::class, $actual[$i]::class);
+            $this->assertEquals($mapper, $actual[$i]);
+        }
+
+        $fresh = (new Parser())
+            ->setMaxSalutationIndex(2)
+            ->setMaxCombinedInitials(1);
+
+        foreach (['John Robert Smith', 'Smith, John Robert', 'Francis Mr', 'DJ Westbam', 'Smith, John MD, FACS'] as $name) {
+            $this->assertSame((string) $fresh->parse($name), (string) $promoted->parse($name), $name);
+        }
+    }
+
+    // np-r2-04: isUnknownTail uses the injected per-parse memoized
+    // candidate and rider tests (same definition as the split scan)
+    public function testUnknownTailUsesInjectedCandidateAndRiderTests(): void
+    {
+        $parser = new Parser();
+        $candidateCalls = [];
+        $riderCalls = [];
+        $tail = new CommaCredentialTail(
+            $parser->getSuffixes(),
+            function (string $token) use (&$candidateCalls): bool {
+                $candidateCalls[] = $token;
+
+                return Text::isUnknownCredentialCandidate($token);
+            },
+            static fn(array $tokens, bool $uniform): array => $tokens,
+            function (string $token) use (&$riderCalls): bool {
+                $riderCalls[] = $token;
+
+                return Text::isCredentialTailRider($token);
+            },
+        );
+
+        $this->assertTrue($tail->isUnknownTail(['LMHP', 'D']));
+        $this->assertContains('LMHP', $candidateCalls);
+        $this->assertContains('D', $riderCalls);
+        $this->assertFalse($tail->isUnknownTail(['John']));
+    }
+
+    // np-r2-05: the uniform-uppercase gate shares the per-parse token
+    // memo instead of re-scanning every token
+    public function testUniformGateSharesTokenMemo(): void
+    {
+        $parser = new Parser();
+        $gate = new ReflectionMethod(Parser::class, 'isUniformUpperInput');
+        $gate->setAccessible(true);
+
+        $this->assertTrue($gate->invoke($parser, 'AB CD AB CD'));
+
+        $memo = (new ReflectionProperty(Parser::class, 'tokenAnalysisMemo'))->getValue($parser);
+        $this->assertIsArray($memo);
+        $this->assertSame(['AB', 'CD'], array_keys($memo));
+    }
+
+    // np-r2-05: the per-parse token memo is capped; past the cap tokens
+    // are still analyzed correctly without retaining entries
+    public function testTokenAnalysisMemoIsCapped(): void
+    {
+        $parser = new Parser();
+        $cap = (new ReflectionClass(Parser::class))->getConstant('MAX_TOKEN_ANALYSIS_ENTRIES');
+        $this->assertIsInt($cap);
+
+        $analyze = new ReflectionMethod(Parser::class, 'analyzeToken');
+        $analyze->setAccessible(true);
+
+        $last = '';
+
+        for ($i = 0; $i < $cap + 500; $i++) {
+            $last = 'Q' . $i . 'X';
+            $analyze->invoke($parser, $last);
+        }
+
+        $memo = (new ReflectionProperty(Parser::class, 'tokenAnalysisMemo'))->getValue($parser);
+        $this->assertIsArray($memo);
+        $this->assertLessThanOrEqual($cap, count($memo));
+        $this->assertEquals(Text::analyzeToken($last), $analyze->invoke($parser, $last));
+        $this->assertEquals(Text::analyzeToken('Q0X'), $analyze->invoke($parser, 'Q0X'));
+    }
+
+    // np-r2-05: the per-parse token memo is dropped at the end of
+    // parse(), so a hostile row does not pin entries between parses
+    public function testTokenMemoClearedAfterParse(): void
+    {
+        $parser = new Parser();
+        $parser->parse('Smith, John MD, FACS');
+
+        $memo = (new ReflectionProperty(Parser::class, 'tokenAnalysisMemo'))->getValue($parser);
+        $this->assertSame([], $memo);
+    }
+
+    // np-r2-06: parse() entry resets the sticky casing overrides through
+    // the shared helper, so a stale override cannot leak into the next parse
+    // (a stale uniform-upper `true` would suppress the DJ split and yield no
+    // initials instead of the stock 'D J' split)
+    public function testParseEntryResetsUniformUpperOverrides(): void
+    {
+        $parser = new Parser();
+
+        foreach ($parser->getMappers() as $mapper) {
+            if ($mapper instanceof InitialMapper || $mapper instanceof SuffixMapper) {
+                $mapper->setUniformUpperOverride(true);
+            }
+        }
+
+        $this->assertSame('J', $parser->parse('DJ Westbam')->getInitials());
+        $this->assertSame((string) (new Parser())->parse('DJ Westbam'), (string) $parser->parse('DJ Westbam'));
+    }
+
+    // np-r2-07: the firstname stage comes from the factory element
+    // builder in both the default pipeline and the second-segment parser
+    public function testFirstnameBuilderFeedsBothPipelines(): void
+    {
+        $this->assertInstanceOf(FirstnameMapper::class, SegmentParserFactory::newFirstnameMapper());
+
+        $parser = new Parser();
+        $pipeline = SegmentParserFactory::newDefaultPipeline(
+            false,
+            $parser->getSalutations(),
+            $parser->getMaxSalutationIndex(),
+            $parser->getSuffixes(),
+            $parser->getNicknameDelimiters(),
+            $parser->getConnectors(),
+            $parser->getMaxCombinedInitials(),
+            $parser->getLastnamePrefixes(),
+        );
+        $classes = array_map(static fn(object $mapper): string => $mapper::class, $pipeline);
+        $this->assertContains(FirstnameMapper::class, $classes);
+
+        $parser->parse('Smith, John');
+        $secondSegment = (new ReflectionProperty(Parser::class, 'secondSegmentParser'))->getValue($parser);
+        $this->assertInstanceOf(Parser::class, $secondSegment);
+        $secondClasses = array_map(static fn(object $mapper): string => $mapper::class, $secondSegment->getMappers());
+        $this->assertContains(FirstnameMapper::class, $secondClasses);
+    }
+}

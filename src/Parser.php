@@ -3,6 +3,7 @@
 namespace Iliaal\NameParser;
 
 use Iliaal\NameParser\Language\English;
+use Iliaal\NameParser\Mapper\AbstractMapper;
 use Iliaal\NameParser\Mapper\FirstnameMapper;
 use Iliaal\NameParser\Mapper\InitialMapper;
 use Iliaal\NameParser\Mapper\LastnameMapper;
@@ -115,22 +116,37 @@ class Parser
     private array $secondSegmentSuffixMappers = [];
 
     /**
-     * per-token case analysis memo, reset at the top of every parse()
-     * (np-cr-016): the same token's letters are otherwise re-extracted by an
-     * independent Unicode-regex scan at each call site (uniform-input gate,
-     * creditClass, unknown-tail checks, per-mapper gates).
+     * bound on the per-parse token-analysis memo (np-r2-05): real names hold
+     * a handful of distinct tokens, so this never binds outside hostile
+     * unique-token rows, where it caps both the retained entries and the
+     * memoized (vs recomputed) work per parse.
+     */
+    private const int MAX_TOKEN_ANALYSIS_ENTRIES = 1024;
+
+    /**
+     * per-token case analysis memo, reset at the top of every parse() and
+     * dropped again at its end (np-cr-016, np-r2-05): the same token's
+     * letters are otherwise re-extracted by an independent Unicode-regex
+     * scan at each call site (uniform-input gate, creditClass, unknown-tail
+     * checks, per-mapper gates). Capped at MAX_TOKEN_ANALYSIS_ENTRIES so a
+     * hostile unique-token row cannot pin an unbounded entry set; past the
+     * cap tokens are analyzed without memoizing (same result, no retention).
      *
      * @var array<string, array{letters: string, upper: bool, lower: bool, cased: bool}>
      */
     private array $tokenAnalysisMemo = [];
 
     /**
-     * already-split comma tail stashed by parse() for the overridable
-     * parseSplitName() hook (np-cr-006); consumed (nulled) on read
+     * already-split comma tails stashed by parse() for the overridable
+     * parseSplitName() hook (np-cr-006), as a stack of [given, tail] pairs.
+     * The hook consumes (pops) the head pair only when its given string
+     * matches the hook's $given, so a re-entrant parse() for another input
+     * (a subclass override routing a second name through the hook first)
+     * neither consumes nor overwrites the outer tail (np-r2-02).
      *
-     * @var list<string>|null
+     * @var list<array{0: string, 1: list<string>}>
      */
-    private ?array $preSplitTailSegments = null;
+    private array $preSplitTailStack = [];
 
     /**
      * @param  array<int, LanguageInterface>  $languages
@@ -168,15 +184,27 @@ class Parser
         }
 
         // per-parse memo of per-token case analysis (np-cr-016); sub-parsers
-        // are separate instances with their own memo
+        // are separate instances with their own memo. The memo is dropped
+        // again at the end of parse() (see finally below) so a hostile
+        // unique-token row does not pin entries between parses (np-r2-05).
         $this->tokenAnalysisMemo = [];
 
         // drop sticky @internal overrides on the main pipeline (memoized mappers)
-        foreach ($this->mappers as $mapper) {
-            if ($mapper instanceof InitialMapper || $mapper instanceof SuffixMapper) {
-                $mapper->setUniformUpperOverride(null);
-            }
+        AbstractMapper::resetUniformUpperOverrides($this->mappers);
+
+        try {
+            return $this->parseInput($name);
+        } finally {
+            $this->tokenAnalysisMemo = [];
         }
+    }
+
+    /**
+     * parse() body without the per-parse setup/teardown above: budgets,
+     * normalization, comma routing, and the single-segment pipeline
+     */
+    private function parseInput(string $name): Name
+    {
 
         $this->assertInputByteBudget($name);
         $name = $this->normalize($name);
@@ -192,16 +220,14 @@ class Parser
             // hook below, so subclass overrides keep firing (pinned by
             // testCommaParsingUsesProtectedSplitHook) without paying an
             // implode+re-split round trip (np-cr-006)
-            $this->preSplitTailSegments = array_slice($segments, 1);
+            $tail = array_slice($segments, 1);
+            $this->preSplitTailStack[] = [implode(',', $tail), $tail];
 
             try {
-                return $this->parseSplitName(
-                    $segments[0],
-                    implode(',', array_slice($segments, 1)),
-                )
+                return $this->parseSplitName($segments[0], implode(',', $tail))
                     ->setSource($name, $this->tokenizeSegments($segments));
             } finally {
-                $this->preSplitTailSegments = null;
+                array_pop($this->preSplitTailStack);
             }
         }
 
@@ -229,12 +255,20 @@ class Parser
     protected function parseSplitName(string $surname, string $given): Name
     {
         // parse() stashes the already-split tail so this hook avoids a
-        // re-split; direct callers (and nested surname-first recursion) fall
-        // back to splitting $given
-        $tailSegments = $this->preSplitTailSegments ?? $this->splitStructuralCommas($given);
-        $this->preSplitTailSegments = null;
+        // re-split; the head pair is consumed only when its given string
+        // matches this call's $given, so a re-entrant hook invocation for
+        // another input splits fresh instead of stealing the outer tail
+        // (np-r2-02). Direct callers (and nested surname-first recursion)
+        // fall back to splitting $given.
+        $tailSegments = null;
+        $head = end($this->preSplitTailStack);
 
-        return $this->parseSplitNameSegments($surname, $given, $tailSegments);
+        if ($head !== false && $head[0] === $given) {
+            $tailSegments = $head[1];
+            array_pop($this->preSplitTailStack);
+        }
+
+        return $this->parseSplitNameSegments($surname, $given, $tailSegments ?? $this->splitStructuralCommas($given));
     }
 
     /**
@@ -422,8 +456,8 @@ class Parser
 
     /**
      * credential-tail classifier wired with the live suffix dictionary, the
-     * per-parse memoized unknown-candidate test, and the second-segment
-     * suffix-mapper ride (np-cr-026)
+     * per-parse memoized unknown-candidate and credential-rider tests, and
+     * the second-segment suffix-mapper ride (np-cr-026, np-r2-04)
      */
     private function commaCredentialTail(): CommaCredentialTail
     {
@@ -431,6 +465,7 @@ class Parser
             $this->getSuffixes(),
             $this->isMemoizedUnknownCandidate(...),
             $this->mapCommaSegmentSuffixes(...),
+            $this->isMemoizedCredentialRider(...),
         );
     }
 
@@ -491,13 +526,27 @@ class Parser
     }
 
     /**
-     * per-parse memoized token analysis (np-cr-016)
+     * per-parse memoized token analysis (np-cr-016), capped so a hostile
+     * unique-token row cannot grow the memo without bound (np-r2-05). Past
+     * the cap tokens are analyzed without memoizing: same result, no entry.
      *
      * @return array{letters: string, upper: bool, lower: bool, cased: bool}
      */
     private function analyzeToken(string $token): array
     {
-        return $this->tokenAnalysisMemo[$token] ??= Text::analyzeToken($token);
+        $cached = $this->tokenAnalysisMemo[$token] ?? null;
+
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        $analysis = Text::analyzeToken($token);
+
+        if (count($this->tokenAnalysisMemo) < self::MAX_TOKEN_ANALYSIS_ENTRIES) {
+            $this->tokenAnalysisMemo[$token] = $analysis;
+        }
+
+        return $analysis;
     }
 
     /**
@@ -524,9 +573,24 @@ class Parser
     }
 
     /**
+     * Text::isCredentialTailRider() over the per-parse memo: the expensive
+     * letters() scan is shared with the memoized analysis, and the comparison
+     * itself is Text's expression verbatim. Text stays canonical.
+     */
+    private function isMemoizedCredentialRider(string $token): bool
+    {
+        $letters = $this->analyzeToken($token)['letters'];
+
+        return $letters === mb_strtoupper($letters, 'UTF-8');
+    }
+
+    /**
      * true when every cased token in the raw input is uppercase, so casing
      * carries no signal. Judged over the whole comma-bearing string, matching
-     * the mapper-level uniform-uppercase gates.
+     * the mapper-level uniform-uppercase gates. Runs over the per-parse
+     * token-analysis memo (same decision as Text::isUniformUpperTokens(),
+     * which stays canonical) so the gate shares each token's single
+     * letters() scan with the credential checks (np-r2-05).
      */
     private function isUniformUpperInput(string $name): bool
     {
@@ -536,8 +600,23 @@ class Parser
         // documented 65k-token cost even when the byte pre-filter below counts
         // only ASCII separators (np-cr-001, np-cr-027).
         $tokens = preg_split('/[\s,]+/u', $name, Text::MAX_INPUT_TOKENS + 1) ?: [];
+        $hasCased = false;
 
-        return Text::isUniformUpperTokens($tokens);
+        foreach ($tokens as $token) {
+            $analysis = $this->analyzeToken((string) $token);
+
+            if (! $analysis['cased']) {
+                continue;
+            }
+
+            $hasCased = true;
+
+            if (! $analysis['upper']) {
+                return false;
+            }
+        }
+
+        return $hasCased;
     }
 
     /**
@@ -686,7 +765,7 @@ class Parser
                 ),
                 $this->secondSegmentSuffixMappers[1],
                 $this->secondSegmentInitialMapper,
-                new FirstnameMapper(),
+                SegmentParserFactory::newFirstnameMapper(),
                 SegmentParserFactory::newMiddlenameMapper(true, $this->getLastnamePrefixes()),
             ]);
         }
@@ -788,46 +867,51 @@ class Parser
 
     /**
      * rebuild configurable mappers in a promoted default list from current
-     * parser config, preserving mapper order
+     * parser config, preserving mapper order. Every branch routes through
+     * the SegmentParserFactory element builders (np-r2-03), so a factory
+     * default/stage change cannot leave resync stale; per-mapper flags are
+     * read off the mapper being replaced.
      */
     private function resyncConfigurableMappers(): void
     {
         foreach ($this->mappers as $i => $mapper) {
             if ($mapper instanceof InitialMapper) {
-                $this->mappers[$i] = new InitialMapper(
-                    $this->maxCombinedInitials,
+                $this->mappers[$i] = SegmentParserFactory::newInitialMapper(
+                    $this->getMaxCombinedInitials(),
                     $mapper->matchesLastPart(),
-                    $this->getPrefixes(),
+                    $this->getLastnamePrefixes(),
                 );
             } elseif ($mapper instanceof SalutationMapper) {
-                $this->mappers[$i] = new SalutationMapper(
+                $this->mappers[$i] = SegmentParserFactory::newSalutationMapper(
                     $this->getSalutations(),
-                    $this->maxSalutationIndex,
+                    $this->getMaxSalutationIndex(),
                     $mapper->requiresRemainder(),
                     $this->getSuffixes(),
                     $this->getNicknameDelimiters(),
                     $this->getConnectors(),
                 );
             } elseif ($mapper instanceof NicknameMapper) {
-                $this->mappers[$i] = new NicknameMapper($this->getNicknameDelimiters());
+                $this->mappers[$i] = SegmentParserFactory::newNicknameMapper($this->getNicknameDelimiters());
             } elseif ($mapper instanceof SuffixMapper) {
-                $this->mappers[$i] = new SuffixMapper(
+                $this->mappers[$i] = SegmentParserFactory::newSuffixMapper(
                     $this->getSuffixes(),
                     $mapper->matchesSinglePart(),
                     $mapper->getReservedParts(),
                     $this->getNicknameDelimiters(),
                 );
             } elseif ($mapper instanceof LastnameMapper) {
-                $this->mappers[$i] = new LastnameMapper(
-                    $this->getPrefixes(),
+                $this->mappers[$i] = SegmentParserFactory::newLastnameMapper(
+                    $this->getLastnamePrefixes(),
                     $mapper->matchesSinglePart(),
                     $mapper->isSurnameOnly(),
                 );
             } elseif ($mapper instanceof MiddlenameMapper) {
-                $this->mappers[$i] = new MiddlenameMapper(
+                $this->mappers[$i] = SegmentParserFactory::newMiddlenameMapper(
                     $mapper->mapsWithoutLastname(),
-                    $this->getPrefixes(),
+                    $this->getLastnamePrefixes(),
                 );
+            } elseif ($mapper instanceof FirstnameMapper) {
+                $this->mappers[$i] = SegmentParserFactory::newFirstnameMapper();
             }
         }
     }

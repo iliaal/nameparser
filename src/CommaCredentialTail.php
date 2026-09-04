@@ -24,11 +24,13 @@ final class CommaCredentialTail
      * @param  array<int|string, string>  $suffixes  merged suffix dictionary
      * @param  \Closure(string): bool  $isUnknownCandidate  per-parse memoized unknown-candidate test
      * @param  \Closure(list<string>, bool): array<int, AbstractPart|string>  $mapSuffixes  suffix-mapper ride for mixed segments
+     * @param  \Closure(string): bool|null  $isCredentialRider  per-parse memoized rider test; Text::isCredentialTailRider() when null
      */
     public function __construct(
         private array $suffixes,
         private \Closure $isUnknownCandidate,
         private \Closure $mapSuffixes,
+        private ?\Closure $isCredentialRider = null,
     ) {}
 
     /**
@@ -177,6 +179,14 @@ final class CommaCredentialTail
     public function isUnknownTail(array $givenParts): bool
     {
         $hasUnknown = false;
+        // the same per-parse memoized tests as the comma-tail split
+        // (np-r2-04): the candidate definition cannot drift between the
+        // western-route check here and the split scan, and repeated tokens
+        // share one letters() analysis. Text stays canonical underneath the
+        // memoized closures (wired by Parser); direct constructions without
+        // a rider fall back to Text::isCredentialTailRider().
+        $isUnknownCandidate = $this->isUnknownCandidate;
+        $isCredentialRider = $this->isCredentialRider ?? Text::isCredentialTailRider(...);
 
         foreach ($givenParts as $part) {
             if ($part instanceof Suffix) {
@@ -191,7 +201,7 @@ final class CommaCredentialTail
                 continue;
             }
 
-            if (Text::isUnknownCredentialCandidate($part)) {
+            if ($isUnknownCandidate($part)) {
                 // a wholly in-dictionary tail is already routed correctly by
                 // the ordinary comma pipeline, which also canonicalizes the
                 // rendering ("PHD" to "PhD"); only an unknown token needs this
@@ -208,7 +218,7 @@ final class CommaCredentialTail
             // their own. They ride along beside a real one; a tail of nothing
             // but riders never qualifies, so a lone "Assam, P" keeps the comma
             // reading rather than guessing the initial is a credential.
-            if (Text::isCredentialTailRider($part)) {
+            if ($isCredentialRider($part)) {
                 continue;
             }
 
