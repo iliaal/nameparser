@@ -3,13 +3,20 @@
 namespace Iliaal\NameParser\Part;
 
 /**
- * shared implementation for parts that carry a pre-normalized dictionary form
- * decided at map time, rather than deriving one via camelcase at render time.
+ * the single pre-normalized mechanism (np-cr-024): parts that carry a
+ * dictionary form decided at map time, rather than deriving one via camelcase
+ * at render time. PreNormalizedPart is the thin base-class facade over this
+ * trait for the salutation/suffix line; LastnamePrefix and MiddlenamePrefix
+ * use the trait directly only because their instanceof lineage (Lastname,
+ * Middlename) forbids a second base class. New pre-normalized types must
+ * reuse this trait, never a parallel implementation.
  *
  * The dictionary form is fixed at construction: an inherited setValue() call
  * changes only the raw value, and normalize() keeps rendering the original
  * form. That asymmetry is inherited from the released 1.x API; these parts
- * are treated as immutable after mapping.
+ * are treated as immutable after mapping (see AbstractPart::setValue()).
+ *
+ * @see PreNormalizedPart
  */
 trait PreNormalized
 {

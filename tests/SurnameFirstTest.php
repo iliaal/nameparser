@@ -137,6 +137,44 @@ class SurnameFirstTest extends TestCase
     }
 
     /**
+     * A single-token surname with a credential tail has no given-name parts
+     * left, so the re-split has nothing to do: the surname-first order and
+     * the suffix are still pinned rather than falling back to Western order.
+     *
+     * @return array<string, array{string, string, string, string, string, string}>
+     */
+    public static function singleTokenCredentialTailProvider(): array
+    {
+        // input, salutation, firstname, middlename, lastname, suffix
+        return [
+            'comma single-token credential tail' => ['Kim, MD', '', '', '', 'Kim', 'MD'],
+            'space single-token credential tail' => ['Kim MD', '', '', '', 'Kim', 'MD'],
+            'salutation with single-token credential tail' => ['Dr. Kim, MD', 'Dr.', '', '', 'Kim', 'MD'],
+            'salutation with space credential tail' => ['Dr. Kim MD', 'Dr.', '', '', 'Kim', 'MD'],
+            'interrupted tail keeps surname-first order' => ['Kim MD John', '', 'John', '', 'Kim', 'MD'],
+            'comma interrupted tail keeps surname-first order' => ['Kim, MD, John', '', 'John', '', 'Kim', 'MD'],
+        ];
+    }
+
+    #[DataProvider('singleTokenCredentialTailProvider')]
+    public function testSingleTokenSurnameFirstCredentialTails(
+        string $input,
+        string $salutation,
+        string $first,
+        string $middle,
+        string $last,
+        string $suffix,
+    ): void {
+        $name = (new Parser())->setSurnameFirst(true)->parse($input);
+
+        $this->assertSame($salutation, $name->getSalutation(), "salutation for '$input'");
+        $this->assertSame($first, $name->getFirstname(), "first name for '$input'");
+        $this->assertSame($middle, $name->getMiddlename(), "middle name for '$input'");
+        $this->assertSame($last, $name->getLastname(), "last name for '$input'");
+        $this->assertSame($suffix, $name->getSuffix(), "suffix for '$input'");
+    }
+
+    /**
      * a comma-less space-form name with a trailing credential: the credential is
      * peeled to the suffix and the surname-first order is preserved for the rest
      */

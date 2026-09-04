@@ -189,6 +189,11 @@ class SuffixMapperTest extends AbstractMapperTestCase
             }
         };
 
-        $this->assertEquals([new Suffix('LAc', 'LAc')], $mapper->map(['LAc']));
+        // canonical class + value descriptor: assertEquals on part objects
+        // hides type drift behind loose comparison.
+        $mapped = $mapper->map(['LAc']);
+        $this->assertCount(1, $mapped);
+        $this->assertInstanceOf(Suffix::class, $mapped[0]);
+        $this->assertSame('LAc', $mapped[0]->getValue());
     }
 }

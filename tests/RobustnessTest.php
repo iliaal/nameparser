@@ -41,19 +41,34 @@ class RobustnessTest extends TestCase
         $this->assertSame($lastname, $name->getLastname());
     }
 
-    public function testCaselessScriptGivenNameIsNotSplitIntoInitials(): void
+    /**
+     * @return array<string, array{string, string, string}>
+     */
+    public static function caselessScriptProvider(): array
     {
-        // Han and Hebrew are caseless, so the all-uppercase split gate must not
-        // fire: the two-character given name stays whole with no bogus initials.
-        $han = (new Parser())->parse("Wang, \u{674E}\u{660E}");
-        $this->assertSame("\u{674E}\u{660E}", $han->getFirstname());
-        $this->assertSame('Wang', $han->getLastname());
-        $this->assertSame('', $han->getInitials());
+        // input surname, caseless given name, expected suffix: caseless
+        // scripts have no upper/lower case, so the all-uppercase split gate
+        // must not fire and the given name stays whole with no bogus initials.
+        return [
+            'han' => ['Wang', "\u{674E}\u{660E}", ''],
+            'hebrew' => ['Cohen', "\u{05DC}\u{05D9}", ''],
+            'arabic' => ['Haddad', "\u{0645}\u{062D}\u{0645}\u{062F}", ''],
+            'thai' => ['Somsak', "\u{0E2D}\u{0E32}\u{0E17}\u{0E34}\u{0E15}\u{0E22}\u{0E4C}", ''],
+            'hiragana' => ['Tanaka', "\u{3042}\u{304D}\u{3089}", ''],
+            'han with credential' => ['Wang', "\u{674E}\u{660E}", 'MD'],
+        ];
+    }
 
-        $hebrew = (new Parser())->parse("Cohen, \u{05DC}\u{05D9}");
-        $this->assertSame("\u{05DC}\u{05D9}", $hebrew->getFirstname());
-        $this->assertSame('Cohen', $hebrew->getLastname());
-        $this->assertSame('', $hebrew->getInitials());
+    #[DataProvider('caselessScriptProvider')]
+    public function testCaselessScriptGivenNameIsNotSplitIntoInitials(string $last, string $given, string $suffix): void
+    {
+        $input = $suffix === '' ? "{$last}, {$given}" : "{$last}, {$given} {$suffix}";
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($given, $name->getFirstname(), "firstname for '$input'");
+        $this->assertSame($last, $name->getLastname(), "lastname for '$input'");
+        $this->assertSame('', $name->getInitials(), "initials for '$input'");
+        $this->assertSame($suffix, $name->getSuffix(), "suffix for '$input'");
     }
 
     public function testLoneCaselessGivenCharIsFirstNameNotInitial(): void
@@ -71,8 +86,9 @@ class RobustnessTest extends TestCase
 
         $this->assertSame('John', $name->getFirstname());
         $this->assertSame('Smith', $name->getLastname());
-        $this->assertStringContainsString('MD', $name->getSuffix());
-        $this->assertStringContainsString('PhD', $name->getSuffix());
+        // full suffix string: contains-asserts pass on reordered/duplicated
+        // credentials ('PhD MD', 'MD MD PhD'), so the order is pinned exactly.
+        $this->assertSame('MD PhD', $name->getSuffix());
     }
 
     /**
@@ -163,6 +179,34 @@ class RobustnessTest extends TestCase
 
         $this->assertSame('John', $name->getFirstname());
         $this->assertSame('Smith', $name->getLastname());
+    }
+
+    /**
+     * @return array<string, array{string, string, string}>
+     */
+    public static function invalidUtf8BodyProvider(): array
+    {
+        // input, expected firstname, expected lastname: under the default
+        // config the SCRUB policy replaces invalid bytes up front (mb_scrub
+        // renders them as '?'), so the byte lands deterministically in its
+        // field instead of degrading per call site, and phpunit's
+        // failOnWarning proves the parse stays quiet.
+        return [
+            'invalid byte in comma given name' => ["Smith, J\xFFhn", 'J?Hn', 'Smith'],
+            'invalid byte leading the given name' => ["J\xFFhn Smith", 'J?Hn', 'Smith'],
+            'invalid byte trailing into surname' => ["Smith J\xFFhn", 'Smith', 'J?Hn'],
+            'lone invalid byte as given name' => ["\xFF Smith", '?', 'Smith'],
+        ];
+    }
+
+    #[DataProvider('invalidUtf8BodyProvider')]
+    public function testInvalidUtf8BodyIsScrubbedUnderDefaultConfig(string $input, string $first, string $last): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($first, $name->getFirstname(), 'firstname for ' . bin2hex($input));
+        $this->assertSame($last, $name->getLastname(), 'lastname for ' . bin2hex($input));
+        $this->assertTrue(mb_check_encoding($name->getFirstname() . $name->getLastname(), 'UTF-8'), 'scrubbed output is valid UTF-8');
     }
 
     public function testInvalidUtf8NicknameDelimiterIsIgnoredWithoutWarnings(): void

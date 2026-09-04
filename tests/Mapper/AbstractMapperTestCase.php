@@ -11,7 +11,7 @@ abstract class AbstractMapperTestCase extends TestCase
 {
     /**
      * @param  array<int, AbstractPart|string>  $input
-     * @param  array<int, mixed>  $expectation
+     * @param  array<int, AbstractPart|string>  $expectation
      * @param  array<int|string, mixed>  $arguments
      */
     #[DataProvider('provider')]
@@ -19,7 +19,10 @@ abstract class AbstractMapperTestCase extends TestCase
     {
         $mapper = $this->getMapper(...$arguments);
 
-        $this->assertEquals($expectation, $mapper->map($input));
+        $this->assertSame(
+            self::canonicalParts($expectation),
+            self::canonicalParts($mapper->map($input)),
+        );
     }
 
     public function testMapAcceptsSparseIntegerKeys(): void
@@ -27,9 +30,28 @@ abstract class AbstractMapperTestCase extends TestCase
         $dense = ['John', 'Smith'];
         $sparse = [5 => 'John', 9 => 'Smith'];
 
-        $this->assertEquals(
-            $this->getMapper()->map($dense),
-            $this->getMapper()->map($sparse),
+        $this->assertSame(
+            self::canonicalParts($this->getMapper()->map($dense)),
+            self::canonicalParts($this->getMapper()->map($sparse)),
+        );
+    }
+
+    /**
+     * Class + value descriptors for part output: part objects are never
+     * identical instances across a mapping, so a bare assertSame cannot
+     * pass, while assertEquals hides order/type drift behind loose
+     * comparison. Canonicalizing first makes assertSame exact.
+     *
+     * @param  array<int, AbstractPart|string>  $parts
+     * @return list<string>
+     */
+    final protected static function canonicalParts(array $parts): array
+    {
+        return array_map(
+            static fn(AbstractPart|string $part): string => $part instanceof AbstractPart
+                ? $part::class . "\0" . $part->getValue()
+                : "\0" . $part,
+            array_values($parts),
         );
     }
 

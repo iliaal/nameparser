@@ -358,7 +358,7 @@ across every `parse()` call.
 
 ```bash
 composer install
-composer test     # phpunit
+composer test     # phpunit with a 256 MiB memory limit
 composer analyse  # phpstan (level 9)
 composer lint     # php-cs-fixer (dry run)
 ```

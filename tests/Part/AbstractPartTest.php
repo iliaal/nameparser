@@ -12,25 +12,25 @@ class AbstractPartTest extends TestCase
     public function testCamelcaseCacheIsInvalidatedOnSetValue(): void
     {
         $part = new Lastname('mcdonald');
-        $this->assertEquals('Mcdonald', $part->normalize());
+        $this->assertSame('Mcdonald', $part->normalize());
 
         $part->setValue('van der berg');
-        $this->assertEquals('Van Der Berg', $part->normalize());
+        $this->assertSame('Van Der Berg', $part->normalize());
     }
 
     public function testNormalize(): void
     {
         $part = new class ('abc') extends AbstractPart {};
-        $this->assertEquals('abc', $part->normalize());
+        $this->assertSame('abc', $part->normalize());
     }
 
     public function testSetValueUnwraps(): void
     {
         $part = new class ('abc') extends AbstractPart {};
-        $this->assertEquals('abc', $part->getValue());
+        $this->assertSame('abc', $part->getValue());
 
         $wrapped = new class ($part) extends AbstractPart {};
-        $this->assertEquals('abc', $wrapped->getValue());
+        $this->assertSame('abc', $wrapped->getValue());
     }
 
     public function testCamelcaseIsKeyedByWordNotFirstCall(): void

@@ -11,8 +11,8 @@ use PHPUnit\Framework\TestCase;
  * span credential, suffix, prefix, comma, particle, hyphen, apostrophe, and
  * middle-name forms. Locks first/last extraction on genuine clinician names.
  *
- * Comparison is case-insensitive: NPPES stores names upper-case and the parser
- * title-cases its output.
+ * Comparison is exact-case: the expectations record the parser's canonical
+ * title-case (NPPES stores names upper-case), so casing regressions fail.
  */
 class NpiCorpusTest extends TestCase
 {
@@ -22,25 +22,26 @@ class NpiCorpusTest extends TestCase
     public static function provider(): array
     {
         return [
-            // apostrophe
-            ['Taylor D\'hedouville', 'Taylor', 'D\'hedouville'],
-            ['O\'brien, Christopher', 'Christopher', 'O\'brien'],
-            ['Philip O\'brate', 'Philip', 'O\'brate'],
-            ['Dalys O\'connor', 'Dalys', 'O\'connor'],
-            ['Sean P. O\'connor', 'Sean', 'O\'connor'],
-            ['Jeffrey O\'dell', 'Jeffrey', 'O\'dell'],
-            ['Brittany O\'brien', 'Brittany', 'O\'brien'],
-            ['Raymond E O\'keefe', 'Raymond', 'O\'keefe'],
-            ['Lee, Na\'tavia', 'Na\'tavia', 'Lee'],
-            ['Joshua Jon D\'agostino', 'Joshua', 'D\'agostino'],
-            ['O\'connor, Kelly', 'Kelly', 'O\'connor'],
-            ['Samantha O\'neil', 'Samantha', 'O\'neil'],
-            ['Brian O\'connor', 'Brian', 'O\'connor'],
-            ['Kelson, E\'shayla MHA', 'E\'shayla', 'Kelson'],
-            ['N\'keyma Lee', 'N\'keyma', 'Lee'],
-            ['Danielle O\'connell', 'Danielle', 'O\'connell'],
-            ['April O\'neil', 'April', 'O\'neil'],
-            ['D\'addario, Dawn', 'Dawn', 'D\'addario'],
+            // apostrophe (expectations are the parser's canonical title-case,
+            // not the raw NPPES casing: the fold after the apostrophe is exact)
+            ['Taylor D\'hedouville', 'Taylor', 'D\'Hedouville'],
+            ['O\'brien, Christopher', 'Christopher', 'O\'Brien'],
+            ['Philip O\'brate', 'Philip', 'O\'Brate'],
+            ['Dalys O\'connor', 'Dalys', 'O\'Connor'],
+            ['Sean P. O\'connor', 'Sean', 'O\'Connor'],
+            ['Jeffrey O\'dell', 'Jeffrey', 'O\'Dell'],
+            ['Brittany O\'brien', 'Brittany', 'O\'Brien'],
+            ['Raymond E O\'keefe', 'Raymond', 'O\'Keefe'],
+            ['Lee, Na\'tavia', 'Na\'Tavia', 'Lee'],
+            ['Joshua Jon D\'agostino', 'Joshua', 'D\'Agostino'],
+            ['O\'connor, Kelly', 'Kelly', 'O\'Connor'],
+            ['Samantha O\'neil', 'Samantha', 'O\'Neil'],
+            ['Brian O\'connor', 'Brian', 'O\'Connor'],
+            ['Kelson, E\'shayla MHA', 'E\'Shayla', 'Kelson'],
+            ['N\'keyma Lee', 'N\'Keyma', 'Lee'],
+            ['Danielle O\'connell', 'Danielle', 'O\'Connell'],
+            ['April O\'neil', 'April', 'O\'Neil'],
+            ['D\'addario, Dawn', 'Dawn', 'D\'Addario'],
             // comma
             ['Hahn, Victoria', 'Victoria', 'Hahn'],
             ['Soucier, Richard', 'Richard', 'Soucier'],
@@ -136,29 +137,29 @@ class NpiCorpusTest extends TestCase
             ['Laurie B Sanders', 'Laurie', 'Sanders'],
             ['Jeremy M. Morris', 'Jeremy', 'Morris'],
             // particle
-            ['Vance J Van Tassell', 'Vance', 'Van Tassell'],
-            ['Elizabeth De La Torre', 'Elizabeth', 'De La Torre'],
-            ['Theresa Di Forti', 'Theresa', 'Di Forti'],
+            ['Vance J Van Tassell', 'Vance', 'van Tassell'],
+            ['Elizabeth De La Torre', 'Elizabeth', 'de la Torre'],
+            ['Theresa Di Forti', 'Theresa', 'di Forti'],
             ['Mila Le', 'Mila', 'Le'],
             ['Thuy Le', 'Thuy', 'Le'],
             ['Le, Elizabeth PHARMD', 'Elizabeth', 'Le'],
-            ['Britt De Blonde', 'Britt', 'De Blonde'],
-            ['Angelica De Rodriguez', 'Angelica', 'De Rodriguez'],
-            ['Michelle De La Guardia', 'Michelle', 'De La Guardia'],
+            ['Britt De Blonde', 'Britt', 'de Blonde'],
+            ['Angelica De Rodriguez', 'Angelica', 'de Rodriguez'],
+            ['Michelle De La Guardia', 'Michelle', 'de la Guardia'],
             ['Kevin Le', 'Kevin', 'Le'],
-            ['Stacy Van Heeswyk', 'Stacy', 'Van Heeswyk'],
+            ['Stacy Van Heeswyk', 'Stacy', 'van Heeswyk'],
             ['Le, Isabella', 'Isabella', 'Le'],
             ['Srijisnu De', 'Srijisnu', 'De'],
             ['Mac, Ryan', 'Ryan', 'Mac'],
             ['Vivian Le', 'Vivian', 'Le'],
             ['Khuong Le', 'Khuong', 'Le'],
-            ['Jaimee De Pompeo', 'Jaimee', 'De Pompeo'],
-            ['Primrose Del Rosario', 'Primrose', 'Del Rosario'],
+            ['Jaimee De Pompeo', 'Jaimee', 'de Pompeo'],
+            ['Primrose Del Rosario', 'Primrose', 'del Rosario'],
             ['Le, Catherine', 'Catherine', 'Le'],
             ['Jennifer Chen Wu', 'Jennifer', 'Chen Wu'],
             ['James Grant Allman Ii', 'James', 'Allman Ii'],
-            ['Susan Von Rosk', 'Susan', 'Von Rosk'],
-            ['Beatriz Del Villar', 'Beatriz', 'Del Villar'],
+            ['Susan Von Rosk', 'Susan', 'von Rosk'],
+            ['Beatriz Del Villar', 'Beatriz', 'del Villar'],
             ['Tatyana Der', 'Tatyana', 'Der'],
             // plain
             ['Andrew Bonin', 'Andrew', 'Bonin'],
@@ -219,16 +220,11 @@ class NpiCorpusTest extends TestCase
     {
         $name = (new Parser())->parse($input);
 
-        $this->assertSame(
-            mb_strtolower($first, 'UTF-8'),
-            mb_strtolower($name->getFirstname(), 'UTF-8'),
-            "first name for '$input'",
-        );
-        $this->assertSame(
-            mb_strtolower($last, 'UTF-8'),
-            mb_strtolower($name->getLastname(), 'UTF-8'),
-            "last name for '$input'",
-        );
+        // exact-case: the provider expectations are the parser's canonical
+        // title-case (apostrophe fold, lower-cased particles), so a casing
+        // regression fails here instead of hiding behind a case fold.
+        $this->assertSame($first, $name->getFirstname(), "first name for '$input'");
+        $this->assertSame($last, $name->getLastname(), "last name for '$input'");
     }
 
     /**
@@ -291,5 +287,45 @@ class NpiCorpusTest extends TestCase
         $this->assertSame($suffix, $name->getSuffix(), "suffix for '$input'");
         $this->assertSame('', $name->getInitials(), "initials for '$input'");
         $this->assertSame('', $name->getMiddlename(), "middle name for '$input'");
+    }
+
+    /**
+     * Non-credential corpus rows must not grow a suffix, and their middle /
+     * initial placement is pinned: single letters stay initials, real middle
+     * tokens stay middlenames, everything else stays out of both getters.
+     *
+     * @return array<string, array{string, string, string}>
+     */
+    public static function nonCredentialFieldProvider(): array
+    {
+        return [
+            // input, expected middlename, expected initials
+            'apostrophe surname' => ["Taylor D'hedouville", '', ''],
+            'initial before apostrophe surname' => ["Sean P. O'connor", '', 'P.'],
+            'comma form' => ['Hahn, Victoria', '', ''],
+            'hyphenated surname' => ['Zenaida Viri-Schaller', '', ''],
+            'hyphenated given with salutation' => ['Dr. Kerri-Anne Vlaming', '', ''],
+            'single-letter middle is an initial' => ['Shawanda L Johnson', '', 'L'],
+            'dotted initial' => ['Douglas W. Perkins', '', 'W.'],
+            'real middle token' => ['Victoria Blanton Eich', 'Blanton', ''],
+            'particle surname with initial' => ['Vance J Van Tassell', '', 'J'],
+            'plain' => ['Andrew Bonin', '', ''],
+            'dotted single-token given' => ['W. Gentry', '', ''],
+            'salutation with plain name' => ['Dr. Robert Graessle', '', ''],
+            'compound hyphenated surname' => ['Mrs. Cheryl Blackmon-Thorne', '', ''],
+            'dotted initial before hyphenated surname' => ['Ethel A. Higgins-Harris', '', 'A.'],
+            'middle token before generational suffix word' => ['James Grant Allman Ii', 'Grant', ''],
+            'compound surname' => ['Jennifer Chen Wu', '', ''],
+        ];
+    }
+
+    #[DataProvider('nonCredentialFieldProvider')]
+    public function testNonCredentialRowsLockSuffixMiddleAndInitials(string $input, string $middle, string $initials): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame('', $name->getSuffix(), "suffix for '$input'");
+        $this->assertSame($middle, $name->getMiddlename(), "middle name for '$input'");
+        $this->assertSame($initials, $name->getInitials(), "initials for '$input'");
     }
 }

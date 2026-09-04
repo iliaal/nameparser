@@ -19,8 +19,6 @@ use Iliaal\NameParser\Part\Suffix;
 
 class Parser
 {
-    private const string COMMA_PLACEHOLDER = "\x00";
-
     protected string $whitespace = " \r\n\t";
 
     /**
@@ -411,186 +409,29 @@ class Parser
     }
 
     /**
-     * classify the post-first-comma segments: a segment whose every token is a
-     * credential (dictionary suffix under the casing rule, or an all-caps
-     * unknown-credential candidate) becomes Suffix parts; the rest are returned
-     * verbatim to fold back into the given segment.
-     *
-     * Unknown all-caps candidates ride only inside a contiguous credential run
-     * anchored by a real dictionary suffix: post-anchor pure candidate segments
-     * (`MD, FACS`), same-segment tails (`John Smith MD FACS`), and a trailing
-     * candidate run in a mixed segment that a later dictionary segment anchors
-     * (`John FACS, MD`). A pure candidate segment with no prior anchor
-     * (`Smith, JOHN, MD` / `Smith, FACS, MD`) is kept as a name: it is
-     * indistinguishable from an all-caps given name, so promoting it would
-     * swallow real names into the suffix.
+     * thin router over CommaCredentialTail (np-cr-026): classify the
+     * post-first-comma segments into Suffix parts and given-name tokens.
      *
      * @param  list<string>  $tailSegments
      * @return array<int, \Iliaal\NameParser\Part\AbstractPart|string>
      */
     private function splitCommaCredentials(array $tailSegments, bool $uniformInput): array
     {
-        /** @var array<int, \Iliaal\NameParser\Part\AbstractPart|string> $parts */
-        $parts = [];
-        /** @var list<list<string>> $pendingCandidateRuns trailing UnknownCandidate peels from mixed segments */
-        $pendingCandidateRuns = [];
-        $credentialRunAnchored = false;
-        $hasCredentialAnchor = false;
-
-        foreach ($tailSegments as $segment) {
-            $trimmed = trim($segment);
-            if ($trimmed === '') {
-                continue;
-            }
-
-            $tokens = $this->tokenizeWords($trimmed);
-            if ($tokens === []) {
-                continue;
-            }
-
-            $tokenClasses = [];
-            $hasDictionarySuffix = false;
-            foreach ($tokens as $token) {
-                $class = $this->credentialClass($token, $uniformInput);
-
-                if ($class === TokenCredentialClass::DictionaryCredential) {
-                    $hasDictionarySuffix = true;
-                }
-
-                $tokenClasses[] = [$token, $class];
-            }
-
-            if ($hasDictionarySuffix) {
-                $hasCredentialAnchor = true;
-            }
-
-            if (! $this->isCredentialOnlySegment($tokenClasses)) {
-                // a pure name segment ends any pure post-anchor run; leftover
-                // peels without a following dictionary segment stay names
-                array_push($parts, ...$this->flattenCandidateRuns($pendingCandidateRuns, false));
-                $pendingCandidateRuns = [];
-
-                // same-segment dictionary suffix anchors unknown candidates on
-                // this segment ("John MD FACS") and subsequent pure candidate
-                // segments ("John MD, FACS"). Hand the whole segment to the
-                // suffix mapper so the ride policy matches space form.
-                if ($hasDictionarySuffix) {
-                    foreach ($this->mapCommaSegmentSuffixes(array_column($tokenClasses, 0), $uniformInput) as $part) {
-                        $parts[] = $part;
-                    }
-
-                    // the anchor reaches the next segment only when the
-                    // credential run touches this segment's tail; a leading
-                    // run ("MD John") must not promote a name in a following
-                    // segment ("Smith, MD John, PAUL" keeps PAUL)
-                    $tokenClassesCount = count($tokenClasses);
-                    $credentialRunAnchored = $tokenClasses[$tokenClassesCount - 1][1] !== TokenCredentialClass::Name;
-
-                    continue;
-                }
-
-                $credentialRunAnchored = false;
-
-                [$headTokens, $trailingCandidates] = $this->splitTrailingCandidates($tokenClasses);
-
-                foreach ($this->mapCommaSegmentSuffixes($headTokens, $uniformInput) as $part) {
-                    $parts[] = $part;
-                }
-
-                if ($trailingCandidates !== []) {
-                    $pendingCandidateRuns[] = $trailingCandidates;
-                }
-
-                continue;
-            }
-
-            if ($hasDictionarySuffix) {
-                // mixed-segment trailing peels ride on this dictionary anchor
-                array_push($parts, ...$this->flattenCandidateRuns($pendingCandidateRuns, true));
-                $pendingCandidateRuns = [];
-                $credentialRunAnchored = true;
-
-                foreach ($tokenClasses as [$token, $class]) {
-                    $parts[] = $class === TokenCredentialClass::DictionaryCredential
-                        ? new Suffix($token, $this->getSuffixes()[Text::key($token)])
-                        : new Suffix($token);
-                }
-
-                continue;
-            }
-
-            if ($credentialRunAnchored) {
-                foreach ($tokens as $token) {
-                    $parts[] = new Suffix($token);
-                }
-            } else {
-                // pure unknown-candidate segment with no dictionary anchor yet:
-                // keep as name tokens (not pending). Promoting later would turn
-                // an all-caps given name into a suffix ("Smith, JOHN, MD").
-                foreach ($tokens as $token) {
-                    $parts[] = $token;
-                }
-            }
-        }
-
-        // trailing peels with no dictionary segment after them stay names
-        array_push($parts, ...$this->flattenCandidateRuns($pendingCandidateRuns, false));
-
-        // Drop contract, documented (np-cr-014 STOPPED, np-o-04): once ANY tail
-        // segment anchors, Unknown placeholders AND punctuation-only noise drop
-        // from the WHOLE given side, including pure-name segments ('Smith,
-        // Jane, -, MD' loses '-'). Scoping the purge to credential-bearing
-        // segments was implemented and reverted: the existing suite
-        // (CommaSegmentTest::commaCredentialNoiseProvider, 'punctuation
-        // before/after anchor') pins the cross-segment drops, and the suite
-        // wins over the bead. 'John Unknown, MD' still keeps Unknown: the
-        // surname segment never enters this purge (documented otherwise, per
-        // the bead's acceptance). Without an anchor nothing drops
-        // (testCommaTailNoiseWithoutCredentialAnchorIsPreserved).
-        if ($hasCredentialAnchor) {
-            $parts = array_values(array_filter(
-                $parts,
-                static fn(\Iliaal\NameParser\Part\AbstractPart|string $part): bool => ! is_string($part)
-                    || ! Text::isCredentialTailNoise($part),
-            ));
-        }
-
-        return $parts;
+        return $this->commaCredentialTail()->split($tailSegments, $uniformInput);
     }
 
     /**
-     * peel a trailing run of unknown-credential candidates off a mixed segment
-     * so a later dictionary segment can anchor them ("John FACS, MD"). An
-     * all-candidate segment is not peeled: that path is handled as pure
-     * candidates above.
-     *
-     * @param  list<array{0: string, 1: TokenCredentialClass}>  $tokenClasses
-     * @return array{0: list<string>, 1: list<string>}
+     * credential-tail classifier wired with the live suffix dictionary, the
+     * per-parse memoized unknown-candidate test, and the second-segment
+     * suffix-mapper ride (np-cr-026)
      */
-    private function splitTrailingCandidates(array $tokenClasses): array
+    private function commaCredentialTail(): CommaCredentialTail
     {
-        $count = count($tokenClasses);
-        $lastNonCandidate = $count - 1;
-
-        while ($lastNonCandidate >= 0 && $tokenClasses[$lastNonCandidate][1] === TokenCredentialClass::UnknownCandidate) {
-            $lastNonCandidate--;
-        }
-
-        if ($lastNonCandidate < 0 || $lastNonCandidate === $count - 1) {
-            return [array_column($tokenClasses, 0), []];
-        }
-
-        $head = [];
-        for ($i = 0; $i <= $lastNonCandidate; $i++) {
-            $head[] = $tokenClasses[$i][0];
-        }
-
-        $trailing = [];
-        for ($i = $lastNonCandidate + 1; $i < $count; $i++) {
-            $trailing[] = $tokenClasses[$i][0];
-        }
-
-        return [$head, $trailing];
+        return new CommaCredentialTail(
+            $this->getSuffixes(),
+            $this->isMemoizedUnknownCandidate(...),
+            $this->mapCommaSegmentSuffixes(...),
+        );
     }
 
     /**
@@ -628,26 +469,6 @@ class Parser
     }
 
     /**
-     * flatten pending unknown-candidate runs back into parts, as suffixes when
-     * a dictionary segment anchored them, else as name tokens
-     *
-     * @param  list<list<string>>  $runs
-     * @return array<int, \Iliaal\NameParser\Part\AbstractPart|string>
-     */
-    private function flattenCandidateRuns(array $runs, bool $asSuffix): array
-    {
-        $parts = [];
-
-        foreach ($runs as $tokens) {
-            foreach ($tokens as $token) {
-                $parts[] = $asSuffix ? new Suffix($token) : $token;
-            }
-        }
-
-        return $parts;
-    }
-
-    /**
      * @param  list<string>  $tokens
      * @return array<int, \Iliaal\NameParser\Part\AbstractPart|string>
      */
@@ -667,52 +488,6 @@ class Parser
         } finally {
             $mapper->setUniformUpperOverride(null);
         }
-    }
-
-    /**
-     * a segment is credential-only when it has tokens and every one is a
-     * dictionary credential or an unknown-credential candidate
-     *
-     * @param  list<array{0: string, 1: TokenCredentialClass}>  $tokenClasses
-     */
-    private function isCredentialOnlySegment(array $tokenClasses): bool
-    {
-        if ($tokenClasses === []) {
-            return false;
-        }
-
-        foreach ($tokenClasses as [, $class]) {
-            if ($class === TokenCredentialClass::Name) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * classify a comma-tail token for the credential scan (np-cr-025): the
-     * former 0/1/2 magic ints are TokenCredentialClass cases
-     */
-    private function credentialClass(string $token, bool $uniformInput): TokenCredentialClass
-    {
-        $key = Text::key($token);
-
-        if (array_key_exists($key, $this->getSuffixes())) {
-            if (isset(SuffixMapper::AMBIGUOUS_KEYS[$key])) {
-                return Text::matchesCredentialCase($token, $this->getSuffixes()[$key])
-                    ? TokenCredentialClass::DictionaryCredential
-                    : TokenCredentialClass::Name;
-            }
-
-            return TokenCredentialClass::DictionaryCredential;
-        }
-
-        if (! $uniformInput && $this->isMemoizedUnknownCandidate($token)) {
-            return TokenCredentialClass::UnknownCandidate;
-        }
-
-        return TokenCredentialClass::Name;
     }
 
     /**
@@ -766,84 +541,27 @@ class Parser
     }
 
     /**
-     * every token of a comma tail reads as a credential, with at least one not
-     * in the dictionary. An already-mapped Suffix rides along, so a mixed tail
+     * thin router over CommaCredentialTail (np-cr-026): every token of a
+     * comma tail reads as a credential, with at least one not in the
+     * dictionary. An already-mapped Suffix rides along, so a mixed tail
      * ("Yates, MOT, OTR/L") still qualifies; anything name-shaped disqualifies.
      *
      * @param  array<int, \Iliaal\NameParser\Part\AbstractPart|string>  $givenParts
      */
     private function isUnknownCredentialTail(array $givenParts): bool
     {
-        $suffixes = $this->getSuffixes();
-        $hasUnknown = false;
-
-        foreach ($givenParts as $part) {
-            if ($part instanceof Suffix) {
-                continue;
-            }
-
-            if (! is_string($part)) {
-                return false;
-            }
-
-            if ($part === '') {
-                continue;
-            }
-
-            if (Text::isUnknownCredentialCandidate($part)) {
-                // a wholly in-dictionary tail is already routed correctly by
-                // the ordinary comma pipeline, which also canonicalizes the
-                // rendering ("PHD" to "PhD"); only an unknown token needs this
-                // path.
-                if (! array_key_exists(Text::key($part), $suffixes)) {
-                    $hasUnknown = true;
-                }
-
-                continue;
-            }
-
-            // a spaced or numbered credential ("PHARM D", "OTA/L 2838") leaves
-            // tokens too short or too digit-heavy to stand as candidates on
-            // their own. They ride along beside a real one; a tail of nothing
-            // but riders never qualifies, so a lone "Assam, P" keeps the comma
-            // reading rather than guessing the initial is a credential.
-            if (Text::isCredentialTailRider($part)) {
-                continue;
-            }
-
-            return false;
-        }
-
-        return $hasUnknown;
+        return $this->commaCredentialTail()->isUnknownTail($givenParts);
     }
 
     /**
+     * thin router over CommaCredentialTail (np-cr-026).
+     *
      * @param  array<int, \Iliaal\NameParser\Part\AbstractPart|string>  $givenParts
      * @return array<int, \Iliaal\NameParser\Part\AbstractPart>
      */
     private function creditTailParts(array $givenParts): array
     {
-        $suffixes = $this->getSuffixes();
-        $parts = [];
-
-        foreach ($givenParts as $part) {
-            if (! is_string($part)) {
-                $parts[] = $part;
-
-                continue;
-            }
-
-            if ($part === '') {
-                continue;
-            }
-
-            $key = Text::key($part);
-            $parts[] = array_key_exists($key, $suffixes)
-                ? new Suffix($part, $suffixes[$key])
-                : new Suffix($part);
-        }
-
-        return $parts;
+        return $this->commaCredentialTail()->creditParts($givenParts);
     }
 
     protected function hasGivenNameParts(Name $name): bool
@@ -899,8 +617,20 @@ class Parser
 
     protected function getFirstSegmentParser(): Parser
     {
-        return $this->firstSegmentParser ??= $this->newSegmentParser()->setMappers(
-            $this->newDefaultPipeline(true),
+        return $this->firstSegmentParser ??= SegmentParserFactory::newSegmentParser(
+            $this->getWhitespace(),
+            $this->getNicknameDelimiters(),
+        )->setMappers(
+            SegmentParserFactory::newDefaultPipeline(
+                true,
+                $this->getSalutations(),
+                $this->getMaxSalutationIndex(),
+                $this->getSuffixes(),
+                $this->getNicknameDelimiters(),
+                $this->getConnectors(),
+                $this->getMaxCombinedInitials(),
+                $this->getLastnamePrefixes(),
+            ),
         );
     }
 
@@ -909,115 +639,59 @@ class Parser
         // inherits delimiters for structural-comma masking on re-entered parse();
         // NicknameMapper runs so a left-side nick ("John (Bob) Smith, Jane") is
         // extracted rather than folded into the surname
-        return $this->surnameSegmentParser ??= $this->newSegmentParser()->setMappers([
-            $this->newSuffixMapper(false, 1),
-            $this->newNicknameMapper(),
-            $this->newSalutationMapper(true),
-            $this->newSuffixMapper(false, 1),
-            $this->newLastnameMapper(true, true),
+        return $this->surnameSegmentParser ??= SegmentParserFactory::newSegmentParser(
+            $this->getWhitespace(),
+            $this->getNicknameDelimiters(),
+        )->setMappers([
+            SegmentParserFactory::newSuffixMapper($this->getSuffixes(), false, 1, $this->getNicknameDelimiters()),
+            SegmentParserFactory::newNicknameMapper($this->getNicknameDelimiters()),
+            SegmentParserFactory::newSalutationMapper(
+                $this->getSalutations(),
+                $this->getMaxSalutationIndex(),
+                true,
+                $this->getSuffixes(),
+                $this->getNicknameDelimiters(),
+                $this->getConnectors(),
+            ),
+            SegmentParserFactory::newSuffixMapper($this->getSuffixes(), false, 1, $this->getNicknameDelimiters()),
+            SegmentParserFactory::newLastnameMapper($this->getLastnamePrefixes(), true, true),
         ]);
     }
 
     protected function getSecondSegmentParser(): Parser
     {
         if ($this->secondSegmentParser === null) {
-            $this->secondSegmentInitialMapper = $this->newInitialMapper(true);
+            $this->secondSegmentInitialMapper = SegmentParserFactory::newInitialMapper(
+                $this->getMaxCombinedInitials(),
+                true,
+                $this->getLastnamePrefixes(),
+            );
             $this->secondSegmentSuffixMappers = [
-                $this->newSuffixMapper(true, 0),
-                $this->newSuffixMapper(true, 0),
+                SegmentParserFactory::newSuffixMapper($this->getSuffixes(), true, 0, $this->getNicknameDelimiters()),
+                SegmentParserFactory::newSuffixMapper($this->getSuffixes(), true, 0, $this->getNicknameDelimiters()),
             ];
-            $this->secondSegmentParser = $this->newSegmentParser()->setMappers([
+            $this->secondSegmentParser = SegmentParserFactory::newSegmentParser(
+                $this->getWhitespace(),
+                $this->getNicknameDelimiters(),
+            )->setMappers([
                 $this->secondSegmentSuffixMappers[0],
-                $this->newNicknameMapper(),
-                $this->newSalutationMapper(true),
+                SegmentParserFactory::newNicknameMapper($this->getNicknameDelimiters()),
+                SegmentParserFactory::newSalutationMapper(
+                    $this->getSalutations(),
+                    $this->getMaxSalutationIndex(),
+                    true,
+                    $this->getSuffixes(),
+                    $this->getNicknameDelimiters(),
+                    $this->getConnectors(),
+                ),
                 $this->secondSegmentSuffixMappers[1],
                 $this->secondSegmentInitialMapper,
                 new FirstnameMapper(),
-                $this->newMiddlenameMapper(true),
+                SegmentParserFactory::newMiddlenameMapper(true, $this->getLastnamePrefixes()),
             ]);
         }
 
         return $this->secondSegmentParser;
-    }
-
-    /**
-     * the default single-segment mapper pipeline, also the base the
-     * comma-segment builders derive from (np-o-13): adding, removing, or
-     * reordering a stage happens here and in the element factories below, not
-     * in four inline lists drifting in lockstep.
-     *
-     * @return array<int, \Iliaal\NameParser\Mapper\AbstractMapper>
-     */
-    private function newDefaultPipeline(bool $surnameSegmentBias = false): array
-    {
-        return [
-            $this->newSalutationMapper(false),
-            $this->newSuffixMapper(false, 2),
-            $this->newNicknameMapper(),
-            $this->newSuffixMapper(false, 2),
-            $this->newInitialMapper(false),
-            $this->newLastnameMapper($surnameSegmentBias),
-            new FirstnameMapper(),
-            $this->newMiddlenameMapper(false),
-        ];
-    }
-
-    private function newSalutationMapper(bool $requireRemainder): SalutationMapper
-    {
-        return new SalutationMapper(
-            $this->getSalutations(),
-            $this->getMaxSalutationIndex(),
-            $requireRemainder,
-            $this->getSuffixes(),
-            $this->getNicknameDelimiters(),
-            $this->getConnectors(),
-        );
-    }
-
-    private function newSuffixMapper(bool $matchSinglePart, int $reservedParts): SuffixMapper
-    {
-        return new SuffixMapper(
-            $this->getSuffixes(),
-            $matchSinglePart,
-            $reservedParts,
-            $this->getNicknameDelimiters(),
-        );
-    }
-
-    private function newNicknameMapper(): NicknameMapper
-    {
-        return new NicknameMapper($this->getNicknameDelimiters());
-    }
-
-    private function newInitialMapper(bool $matchLastPart): InitialMapper
-    {
-        return new InitialMapper(
-            $this->getMaxCombinedInitials(),
-            $matchLastPart,
-            $this->getLastnamePrefixes(),
-        );
-    }
-
-    private function newLastnameMapper(bool $matchSinglePart, bool $surnameOnly = false): LastnameMapper
-    {
-        return new LastnameMapper($this->getLastnamePrefixes(), $matchSinglePart, $surnameOnly);
-    }
-
-    private function newMiddlenameMapper(bool $mapWithoutLastname): MiddlenameMapper
-    {
-        return new MiddlenameMapper($mapWithoutLastname, $this->getLastnamePrefixes());
-    }
-
-    /**
-     * sub-parsers re-enter parse() on already-split segments, so they must
-     * inherit both whitespace and nickname delimiters: the structural-comma
-     * mask keys off $this->nicknameDelimiters, not the mapper constructor arg
-     */
-    private function newSegmentParser(): Parser
-    {
-        return (new Parser())
-            ->setWhitespace($this->getWhitespace())
-            ->setNicknameDelimiters($this->getNicknameDelimiters());
     }
 
     /**
@@ -1028,7 +702,16 @@ class Parser
     public function getMappers(): array
     {
         if (! $this->customMappers && empty($this->mappers)) {
-            $this->mappers = $this->newDefaultPipeline();
+            $this->mappers = SegmentParserFactory::newDefaultPipeline(
+                false,
+                $this->getSalutations(),
+                $this->getMaxSalutationIndex(),
+                $this->getSuffixes(),
+                $this->getNicknameDelimiters(),
+                $this->getConnectors(),
+                $this->getMaxCombinedInitials(),
+                $this->getLastnamePrefixes(),
+            );
         }
 
         return $this->mappers;
@@ -1040,8 +723,8 @@ class Parser
      * Only the single-segment (non-comma) pipeline uses this list. Comma input
      * ("Last, First") is parsed by dedicated surname/given-name sub-parsers
      * (getFirstSegmentParser/getSecondSegmentParser) whose lists are built
-     * from the same element factories (newSalutationMapper/newSuffixMapper/...)
-     * as the default pipeline, so a custom list set here does not affect comma
+     * from the same SegmentParserFactory element builders as the default
+     * pipeline, so a custom list set here does not affect comma
      * forms (and is never silently half-applied: segment behavior is pinned by
      * test). setSurnameFirst(true) routes comma-less input through those same
      * sub-parsers, so a custom list does not apply on that path either. The
@@ -1228,474 +911,26 @@ class Parser
     }
 
     /**
-     * split on every comma that is not shielded inside a matched delimiter
-     * span. Segments are sliced from the original string, so shielded commas
-     * survive verbatim inside their segment.
+     * thin router over StructuralCommaSplitter (np-cr-026): split on every
+     * comma that is not shielded inside a matched delimiter span. Segments
+     * are sliced from the original string, so shielded commas survive
+     * verbatim inside their segment.
      *
      * @return list<string>
      */
     private function splitStructuralCommas(string $name): array
     {
-        if (! str_contains($name, ',')) {
-            return [$name];
-        }
-
-        // masking only swaps ',' <-> a same-width placeholder, so byte offsets
-        // in the masked string map directly back onto the original
-        $masked = $this->maskDelimitedCommas($name);
-
-        $segments = [];
-        $hasStructuralComma = false;
-        $offset = 0;
-
-        while (($pos = strpos($masked, ',', $offset)) !== false) {
-            $hasStructuralComma = true;
-            $segment = substr($name, $offset, $pos - $offset);
-            if ($segment !== '' || $segments === [] || end($segments) !== '') {
-                $segments[] = $segment;
-            }
-
-            $offset = $pos + 1;
-        }
-
-        if (! $hasStructuralComma) {
-            return [$name];
-        }
-
-        $segment = substr($name, $offset);
-        if ($segment !== '' || end($segments) !== '') {
-            $segments[] = $segment;
-        }
-
-        if (count($segments) === 1) {
-            $segments[] = '';
-        }
-
-        return $segments;
+        return StructuralCommaSplitter::split($name, $this->getNicknameDelimiters());
     }
 
     /**
-     * replace each comma that falls inside a matched delimiter pair with a
-     * placeholder so the comma split leaves the nickname intact. Only spans
-     * that actually close are masked; an unmatched opener masks nothing. A
-     * symmetric delimiter (quote) opens only at a token start with a token-end
-     * closer later, mirroring NicknameMapper, so a mid-token apostrophe
-     * (O'Brien) or an elided particle ('t) never shields a comma.
+     * thin router over StructuralCommaSplitter (np-cr-026): replace each
+     * comma that falls inside a matched delimiter pair with a placeholder so
+     * the comma split leaves the nickname intact.
      */
     private function maskDelimitedCommas(string $name): string
     {
-        if (! str_contains($name, ',')) {
-            return $name;
-        }
-
-        // char/byte-mix guard (np-o-02): the char scan below substitutes
-        // invalid sequences (changing byte length) while the split slices byte
-        // offsets, so invalid UTF-8 plus an opener byte could shield/expose the
-        // wrong comma. Bail to unmasked (deterministic split); parse() scrubs
-        // invalid input up front, so this only fires for raw-byte callers.
-        if (! mb_check_encoding($name, 'UTF-8')) {
-            return $name;
-        }
-
-        $delimiters = Text::sanitizeNicknameDelimiters($this->getNicknameDelimiters());
-
-        $pairs = [];
-        /** @var array<string, true> $symmetric */
-        $symmetric = [];
-        foreach ($delimiters as $open => $close) {
-            if ($open === '' || $close === '') {
-                continue;
-            }
-
-            if ($open === $close) {
-                $symmetric[$open] = true;
-            } else {
-                $pairs[$open] = $close;
-            }
-        }
-
-        if ($pairs === [] && $symmetric === []) {
-            return $name;
-        }
-
-        // byte-level pre-check: no opener byte present means nothing to mask,
-        // skipping the scan on the common bracket-free row
-        $openerBytes = implode('', array_merge(array_keys($pairs), array_keys($symmetric)));
-        if (strpbrk($name, $openerBytes) === false) {
-            return $name;
-        }
-
-        // single-byte delimiters scan bytewise (np-cr-011, np-cr-017):
-        // identical results to the char scan on valid UTF-8 (an ASCII byte
-        // never appears inside a multibyte sequence), with no per-character
-        // array, so no length cap is needed and long rows keep their shielding
-        // within bounded cost (nesting-depth + masked-comma caps, documented
-        // on the byte scanner).
-        if ($this->allSingleByteDelimiters($pairs, $symmetric)) {
-            return $this->maskDelimitedCommasAscii($name, $pairs, $symmetric);
-        }
-
-        // multibyte delimiters keep the char scan below; hostile megabyte rows
-        // would materialize a per-character array, so past this size commas
-        // split unshielded (documented real-names-are-tiny tradeoff).
-        if (strlen($name) > 4096) {
-            return $name;
-        }
-
-        $chars = mb_str_split($name, 1, 'UTF-8');
-        $total = count($chars);
-
-        // pre-split every delimiter once; openers sorted longest-first so a
-        // multi-character delimiter ("<<") wins over a single-char prefix ("<")
-        /** @var list<array{list<string>, string, bool}> $openers opener chars, closer string, is-symmetric */
-        $openers = [];
-        foreach ($pairs as $open => $close) {
-            $openers[] = [mb_str_split((string) $open, 1, 'UTF-8'), $close, false];
-        }
-        foreach (array_keys($symmetric) as $quote) {
-            $openers[] = [mb_str_split((string) $quote, 1, 'UTF-8'), (string) $quote, true];
-        }
-        usort($openers, static fn(array $a, array $b): int => count($b[0]) <=> count($a[0]));
-
-        /** @var array<string, list<array{list<string>, string, bool}>> $openersByFirst */
-        $openersByFirst = [];
-        foreach ($openers as $opener) {
-            $openersByFirst[$opener[0][0]][] = $opener;
-        }
-
-        // token-end offsets per symmetric delimiter, so each opener's closer
-        // lookahead is a bounded list walk instead of a rescan. Skipped when
-        // no symmetric delimiter exists (np-cr-011): the common asymmetric
-        // row avoids the token-range materialization entirely.
-        /** @var array<string, list<int>> $symmetricEnds */
-        $symmetricEnds = [];
-        if ($symmetric !== []) {
-            /** @var list<array{int, int}> $tokenRanges token start, end (exclusive) */
-            $tokenRanges = [];
-            $tokenStart = null;
-            for ($i = 0; $i <= $total; ++$i) {
-                if ($this->isStructuralTokenBoundary($chars[$i] ?? null)) {
-                    if ($tokenStart !== null) {
-                        $tokenRanges[] = [$tokenStart, $i];
-                        $tokenStart = null;
-                    }
-                } elseif ($tokenStart === null) {
-                    $tokenStart = $i;
-                }
-            }
-
-            foreach (array_keys($symmetric) as $quote) {
-                $quote = (string) $quote;
-                $quoteChars = mb_str_split($quote, 1, 'UTF-8');
-                $len = count($quoteChars);
-
-                foreach ($tokenRanges as [$start, $end]) {
-                    $closerStart = $end - $len;
-                    if ($closerStart < $start || ! $this->charsMatchAt($chars, $closerStart, $quoteChars)) {
-                        continue;
-                    }
-
-                    // a self-balanced quoted token ("'Genius'") closes itself; its
-                    // tail quote must not serve as the closer for an earlier orphan
-                    // opener, or a leading elided particle ("'t") would open a span
-                    // that swallows the structural comma
-                    if ($end - $start >= $len * 2 && $this->charsMatchAt($chars, $start, $quoteChars)) {
-                        continue;
-                    }
-
-                    $symmetricEnds[$quote][] = $closerStart;
-                }
-            }
-        }
-
-        /** @var list<array{list<string>, bool}> $closers open spans' closer chars + is-symmetric */
-        $closers = [];
-        /** @var list<string> $openQuotes symmetric delimiters currently open */
-        $openQuotes = [];
-        /** @var list<list<int>> $pendingCommas comma offsets per open span */
-        $pendingCommas = [];
-        /** @var array<int, true> $mask */
-        $mask = [];
-
-        for ($i = 0; $i < $total;) {
-            $depth = count($closers);
-
-            if ($depth > 0) {
-                [$closerChars, $isSymmetric] = $closers[$depth - 1];
-                $closerLen = count($closerChars);
-
-                if ($this->charsMatchAt($chars, $i, $closerChars)
-                    && (! $isSymmetric
-                        || $this->isStructuralTokenBoundary($chars[$i + $closerLen] ?? null))) {
-                    array_pop($closers);
-                    if ($isSymmetric) {
-                        array_pop($openQuotes);
-                    }
-                    foreach (array_pop($pendingCommas) ?? [] as $pos) {
-                        $mask[$pos] = true;
-                    }
-
-                    $i += $closerLen;
-
-                    continue;
-                }
-            }
-
-            foreach ($openersByFirst[$chars[$i]] ?? [] as [$openChars, $close, $isSymmetric]) {
-                if (
-                    $isSymmetric
-                    && ! $this->isStructuralTokenBoundary($chars[$i - 1] ?? null)
-                ) {
-                    continue;
-                }
-
-                if (! $this->charsMatchAt($chars, $i, $openChars)) {
-                    continue;
-                }
-
-                $openLen = count($openChars);
-
-                if ($isSymmetric) {
-                    $hasCloser = false;
-                    foreach ($symmetricEnds[$close] ?? [] as $end) {
-                        if ($end >= $i + $openLen) {
-                            $hasCloser = true;
-
-                            break;
-                        }
-                    }
-
-                    if (! $hasCloser || in_array($close, $openQuotes, true)) {
-                        continue;
-                    }
-
-                    $openQuotes[] = $close;
-                }
-
-                $closers[] = [mb_str_split($close, 1, 'UTF-8'), $isSymmetric];
-                $pendingCommas[] = [];
-                $i += $openLen;
-
-                continue 2;
-            }
-
-            if ($chars[$i] === ',' && $depth > 0) {
-                $pendingCommas[$depth - 1][] = $i;
-            }
-
-            $i++;
-        }
-
-        if ($mask === []) {
-            return $name;
-        }
-
-        foreach (array_keys($mask) as $pos) {
-            $chars[$pos] = self::COMMA_PLACEHOLDER;
-        }
-
-        return implode('', $chars);
-    }
-    /**
-     * bounds for the byte-level mask scan (np-cr-017): nesting depth and total
-     * masked commas are capped so a hostile row (megabytes of openers/commas)
-     * costs bounded time and memory. Past the caps further openers read as
-     * literals and further commas as structural. Only reachable on non-name
-     * input: the token budget rejects such rows at parse() top, and real
-     * nickname spans nest one or two deep with a handful of commas.
-     */
-    private const int MAX_MASK_NESTING_DEPTH = 128;
-
-    private const int MAX_MASKED_COMMAS = 65536;
-
-    /**
-     * whether every delimiter is one byte (on valid UTF-8 input, one byte is
-     * ASCII, which never appears inside a multibyte sequence)
-     *
-     * @param  array<string, string>  $pairs
-     * @param  array<string, true>  $symmetric
-     */
-    private function allSingleByteDelimiters(array $pairs, array $symmetric): bool
-    {
-        foreach ($pairs as $open => $close) {
-            if (strlen((string) $open) !== 1 || strlen($close) !== 1) {
-                return false;
-            }
-        }
-
-        foreach ($symmetric as $quote => $_) {
-            if (strlen((string) $quote) !== 1) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * byte-level twin of the char scan in maskDelimitedCommas(), used when all
-     * delimiters are single-byte: byte offsets are char offsets on valid UTF-8
-     * input, so the results are identical with no per-character array and no
-     * length cap (np-cr-011, np-cr-017). Mirrors the char scan rule for rule,
-     * including symmetric open-at-token-start / close-at-token-end.
-     *
-     * @param  array<string, string>  $pairs
-     * @param  array<string, true>  $symmetric
-     */
-    private function maskDelimitedCommasAscii(string $name, array $pairs, array $symmetric): string
-    {
-        $asciiPairs = [];
-        foreach ($pairs as $open => $close) {
-            $asciiPairs[(string) $open] = $close;
-        }
-
-        $length = strlen($name);
-
-        // token-end byte offsets per symmetric quote (closer length is 1), so
-        // each opener's closer lookahead is a bounded list walk
-        /** @var array<string, list<int>> $symmetricEnds */
-        $symmetricEnds = [];
-        if ($symmetric !== []) {
-            $tokenStart = null;
-            for ($i = 0; $i <= $length; ++$i) {
-                $byte = $i < $length ? $name[$i] : null;
-
-                if ($byte === null || $byte === ' ' || $byte === ',') {
-                    if ($tokenStart !== null) {
-                        $end = $i;
-
-                        foreach ($symmetric as $quote => $_) {
-                            $quote = (string) $quote;
-                            $closerStart = $end - 1;
-
-                            if ($closerStart < $tokenStart || $name[$closerStart] !== $quote) {
-                                continue;
-                            }
-
-                            // a self-balanced quoted token ("'Genius'") closes
-                            // itself; its tail quote must not serve as the
-                            // closer for an earlier orphan opener
-                            if ($end - $tokenStart >= 2 && $name[$tokenStart] === $quote) {
-                                continue;
-                            }
-
-                            $symmetricEnds[$quote][] = $closerStart;
-                        }
-
-                        $tokenStart = null;
-                    }
-                } elseif ($tokenStart === null) {
-                    $tokenStart = $i;
-                }
-            }
-        }
-
-        /** @var list<array{string, bool}> $closers open spans' closer byte + is-symmetric */
-        $closers = [];
-        /** @var list<string> $openQuotes symmetric delimiters currently open */
-        $openQuotes = [];
-        /** @var list<list<int>> $pendingCommas comma offsets per open span */
-        $pendingCommas = [];
-        /** @var array<int, true> $mask */
-        $mask = [];
-        $trackedCommas = 0;
-
-        for ($i = 0; $i < $length;) {
-            $depth = count($closers);
-            $byte = $name[$i];
-
-            if ($depth > 0) {
-                [$closeByte, $isSymmetric] = $closers[$depth - 1];
-
-                if ($byte === $closeByte
-                    && (! $isSymmetric
-                        || $this->isStructuralTokenBoundary($i + 1 < $length ? $name[$i + 1] : null))) {
-                    array_pop($closers);
-                    if ($isSymmetric) {
-                        array_pop($openQuotes);
-                    }
-                    foreach (array_pop($pendingCommas) ?? [] as $pos) {
-                        $mask[$pos] = true;
-                    }
-
-                    ++$i;
-
-                    continue;
-                }
-            }
-
-            $canOpen = $depth < self::MAX_MASK_NESTING_DEPTH
-                && $trackedCommas < self::MAX_MASKED_COMMAS;
-
-            if ($canOpen && isset($asciiPairs[$byte])) {
-                $closers[] = [$asciiPairs[$byte], false];
-                $pendingCommas[] = [];
-                ++$i;
-
-                continue;
-            }
-
-            if ($canOpen
-                && isset($symmetric[$byte])
-                && $this->isStructuralTokenBoundary($i > 0 ? $name[$i - 1] : null)) {
-                $hasCloser = false;
-                foreach ($symmetricEnds[$byte] ?? [] as $end) {
-                    if ($end >= $i + 1) {
-                        $hasCloser = true;
-
-                        break;
-                    }
-                }
-
-                if ($hasCloser && ! in_array($byte, $openQuotes, true)) {
-                    $openQuotes[] = $byte;
-                    $closers[] = [$byte, true];
-                    $pendingCommas[] = [];
-                    ++$i;
-
-                    continue;
-                }
-            }
-
-            if ($byte === ',' && $depth > 0 && $trackedCommas < self::MAX_MASKED_COMMAS) {
-                $pendingCommas[$depth - 1][] = $i;
-                ++$trackedCommas;
-            }
-
-            ++$i;
-        }
-
-        if ($mask === []) {
-            return $name;
-        }
-
-        foreach (array_keys($mask) as $pos) {
-            $name[$pos] = self::COMMA_PLACEHOLDER;
-        }
-
-        return $name;
-    }
-
-    /**
-     * whether the character sequence at $offset equals $needle
-     *
-     * @param  list<string>  $chars
-     * @param  list<string>  $needle
-     */
-    private function charsMatchAt(array $chars, int $offset, array $needle): bool
-    {
-        foreach ($needle as $j => $needleChar) {
-            if (($chars[$offset + $j] ?? null) !== $needleChar) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private function isStructuralTokenBoundary(?string $char): bool
-    {
-        return $char === null || $char === ' ' || $char === ',';
+        return StructuralCommaSplitter::mask($name, $this->getNicknameDelimiters());
     }
 
     private function assertInputByteBudget(string $name): void

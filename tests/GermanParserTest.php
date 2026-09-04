@@ -79,7 +79,9 @@ class GermanParserTest extends TestCase
         $name = $parser->parse($input);
 
         $this->assertInstanceOf(Name::class, $name);
-        $this->assertEquals($expectation, $name->getAll());
+        // assertSame (not assertEquals): the rows are written in the canonical
+        // getAll() key order, so a key reorder or type drift fails.
+        $this->assertSame($expectation, $name->getAll());
     }
 
     public function testLanguageOrderIsFirstWins(): void
@@ -109,7 +111,10 @@ class GermanParserTest extends TestCase
         $this->assertSame('Hans', $name->getFirstname());
         $this->assertSame('', $name->getSuffix());
         // MD is not in the German dictionary, so it stays in the name stream
-        $this->assertStringContainsStringIgnoringCase('md', $name->getLastname() . $name->getMiddlename());
+        // and title-cases into the surname: pin the exact landing rather
+        // than a case-insensitive contains that passes on any placement.
+        $this->assertSame('Schmidt Md', $name->getLastname());
+        $this->assertSame('', $name->getMiddlename());
     }
 
     /**

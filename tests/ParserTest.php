@@ -33,8 +33,8 @@ class ParserTest extends TestCase
                 'Hans Christian Anderssen',
                 [
                     'firstname' => 'Hans',
-                    'lastname' => 'Anderssen',
                     'middlename' => 'Christian',
+                    'lastname' => 'Anderssen',
                 ],
             ],
             [
@@ -172,8 +172,8 @@ class ParserTest extends TestCase
                 'Jimmy (Bubba) Smith',
                 [
                     'firstname' => 'Jimmy',
-                    'lastname' => 'Smith',
                     'nickname' => 'Bubba',
+                    'lastname' => 'Smith',
                 ],
             ],
             [
@@ -246,17 +246,17 @@ class ParserTest extends TestCase
                 'Prof. Tyson J. Hirthe',
                 [
                     'salutation' => 'Prof.',
-                    'lastname' => 'Hirthe',
                     'firstname' => 'Tyson',
                     'initials' => 'J.',
+                    'lastname' => 'Hirthe',
                 ],
             ],
             [
                 'prof Eveline Aufderhar',
                 [
                     'salutation' => 'Prof.',
-                    'lastname' => 'Aufderhar',
                     'firstname' => 'Eveline',
+                    'lastname' => 'Aufderhar',
                 ],
             ],
             [
@@ -287,8 +287,8 @@ class ParserTest extends TestCase
                 'Mark P Williams',
                 [
                     'firstname' => 'Mark',
-                    'lastname' => 'Williams',
                     'initials' => 'P',
+                    'lastname' => 'Williams',
                 ],
             ],
             [
@@ -396,8 +396,8 @@ class ParserTest extends TestCase
             [
                 'Jimmy (Bubba Junior) Smith',
                 [
-                    'nickname' => 'Bubba Junior',
                     'firstname' => 'Jimmy',
+                    'nickname' => 'Bubba Junior',
                     'lastname' => 'Smith',
                 ],
             ],
@@ -469,16 +469,16 @@ class ParserTest extends TestCase
                 'Charles Dixon (20th century)',
                 [
                     'firstname' => 'Charles',
-                    'lastname' => 'Dixon',
                     'nickname' => '20Th Century',
+                    'lastname' => 'Dixon',
                 ],
             ],
             [
                 'Smith, John Eric',
                 [
-                    'lastname' => 'Smith',
                     'firstname' => 'John',
                     'middlename' => 'Eric',
+                    'lastname' => 'Smith',
                 ],
             ],
             [
@@ -507,57 +507,57 @@ class ParserTest extends TestCase
             [
                 'Tiptree, James, Jr.',
                 [
-                    'lastname' => 'Tiptree',
                     'firstname' => 'James',
+                    'lastname' => 'Tiptree',
                     'suffix' => 'Jr',
                 ],
             ],
             [
                 'Miller, Walter M., Jr.',
                 [
-                    'lastname' => 'Miller',
                     'firstname' => 'Walter',
                     'initials' => 'M.',
+                    'lastname' => 'Miller',
                     'suffix' => 'Jr',
                 ],
             ],
             [
                 'Tiptree, James Jr.',
                 [
-                    'lastname' => 'Tiptree',
                     'firstname' => 'James',
+                    'lastname' => 'Tiptree',
                     'suffix' => 'Jr',
                 ],
             ],
             [
                 'Miller, Walter M. Jr.',
                 [
-                    'lastname' => 'Miller',
                     'firstname' => 'Walter',
                     'initials' => 'M.',
+                    'lastname' => 'Miller',
                     'suffix' => 'Jr',
                 ],
             ],
             [
                 'Thái Quốc Nguyễn',
                 [
-                    'lastname' => 'Nguyễn',
-                    'middlename' => 'Quốc',
                     'firstname' => 'Thái',
+                    'middlename' => 'Quốc',
+                    'lastname' => 'Nguyễn',
                 ],
             ],
             [
                 'Yumeng Du',
                 [
-                    'lastname' => 'Du',
                     'firstname' => 'Yumeng',
+                    'lastname' => 'Du',
                 ],
             ],
             [
                 'Her Honour Mrs Judy',
                 [
-                    'lastname' => 'Judy',
                     'salutation' => 'Her Honour Mrs.',
+                    'lastname' => 'Judy',
                 ],
             ],
             [
@@ -604,7 +604,9 @@ class ParserTest extends TestCase
         $name = $parser->parse($input);
 
         $this->assertInstanceOf(Name::class, $name);
-        $this->assertEquals($expectation, $name->getAll());
+        // assertSame (not assertEquals): the provider rows are written in the
+        // canonical getAll() key order, so a key reorder or type drift fails.
+        $this->assertSame($expectation, $name->getAll());
     }
 
     public function testSetGetWhitespace(): void

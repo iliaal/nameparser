@@ -247,6 +247,43 @@ class JointSalutationTest extends TestCase
         $this->assertNull($name->getPartner());
     }
 
+    /**
+     * Three titles with a real name all join one honorific (the connector
+     * rule is not limited to pairs): the salutation carries every title,
+     * the row reports joint, and the name lands on the shared surname.
+     *
+     * @return array<string, array{string, string, string, string}>
+     */
+    public static function threeTitleProvider(): array
+    {
+        // input, expected salutation, expected first, expected last
+        return [
+            'three single-word titles' => ['Mr. and Mrs. and Ms. Brad Smith', 'Mr. and Mrs. and Ms.', 'Brad', 'Smith'],
+            'mixed connectors' => ['Mr. & Mrs. and Ms. Brad Smith', 'Mr. and Mrs. and Ms.', 'Brad', 'Smith'],
+            'stacked first title' => ['Rev. Dr. and Mr. and Mrs. John Doe', 'Rev. Dr. and Mr. and Mrs.', 'John', 'Doe'],
+        ];
+    }
+
+    #[DataProvider('threeTitleProvider')]
+    public function testThreeTitleChainWithNameJoinsAllTitles(
+        string $input,
+        string $salutation,
+        string $first,
+        string $last,
+    ): void {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($salutation, $name->getSalutation(), "salutation for '$input'");
+        $this->assertSame($first, $name->getFirstname(), "firstname for '$input'");
+        $this->assertSame($last, $name->getLastname(), "lastname for '$input'");
+        $this->assertTrue($name->isJoint(), "isJoint for '$input'");
+        $this->assertSame(
+            explode(' and ', $salutation),
+            $name->getSalutations(),
+            "getSalutations for '$input'",
+        );
+    }
+
     #[DataProvider('jointProvider')]
     public function testIsJointReportsTwoPersonRows(string $input, bool $joint): void
     {

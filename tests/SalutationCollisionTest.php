@@ -17,6 +17,8 @@ use PHPUnit\Framework\TestCase;
  */
 class SalutationCollisionTest extends TestCase
 {
+    use LoneSalutationCases;
+
     /**
      * @return array<string, array{string, string, string, string}>
      */
@@ -47,8 +49,9 @@ class SalutationCollisionTest extends TestCase
             'Lord as surname allcaps' => ['LORD, JACK', 'Jack', 'Lord', ''],
             'Pastor surname allcaps'  => ['PASTOR, MARIA', 'Maria', 'Pastor', ''],
 
-            // an unambiguous title is still consumed whole, as before
-            'Dr. alone stays title'   => ['Dr., John', 'John', '', 'Dr.'],
+            // unambiguous titles are still consumed whole, as before ('Dr.'
+            // is covered by the shared LoneSalutationCases lock instead of a
+            // duplicate row here)
             'Miss alone stays title'  => ['Miss, John', 'John', '', 'Miss'],
             'Sir alone stays title'   => ['Sir, John', 'John', '', 'Sir'],
 
@@ -77,6 +80,28 @@ class SalutationCollisionTest extends TestCase
         $this->assertSame($first, $name->getFirstname(), "firstname for '$input'");
         $this->assertSame($last, $name->getLastname(), "lastname for '$input'");
         $this->assertSame($salutation, $name->getSalutation(), "salutation for '$input'");
+    }
+
+    /**
+     * Shared lone-salutation lock (see LoneSalutationCases): the comma
+     * suite pins the same rows, so the two readings cannot drift apart.
+     */
+    #[DataProvider('loneSalutationProvider')]
+    public function testLoneSalutationSharedLock(
+        string $input,
+        string $salutation,
+        string $first,
+        string $last,
+        string $initials,
+        string $suffix,
+    ): void {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($salutation, $name->getSalutation(), "salutation for '$input'");
+        $this->assertSame($first, $name->getFirstname(), "firstname for '$input'");
+        $this->assertSame($last, $name->getLastname(), "lastname for '$input'");
+        $this->assertSame($initials, $name->getInitials(), "initials for '$input'");
+        $this->assertSame($suffix, $name->getSuffix(), "suffix for '$input'");
     }
 
     /**

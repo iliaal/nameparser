@@ -75,25 +75,25 @@ class SalutationMapperTest extends AbstractMapperTestCase
             'chief medical officer' => 'Chief Medical Officer',
         ]);
 
-        $this->assertEquals(
-            [
+        $this->assertSame(
+            self::canonicalParts([
                 new Salutation('Chief Medical Officer', 'Chief Medical Officer'),
                 'Jane',
                 'Doe',
-            ],
-            $mapper->map(['Chief', 'Medical', 'Officer', 'Jane', 'Doe']),
+            ]),
+            self::canonicalParts($mapper->map(['Chief', 'Medical', 'Officer', 'Jane', 'Doe'])),
         );
-        $this->assertEquals(
-            [
+        $this->assertSame(
+            self::canonicalParts([
                 new Salutation('Chief Medical', 'Chief Medical'),
                 'Jane',
                 'Doe',
-            ],
-            $mapper->map(['Chief', 'Medical', 'Jane', 'Doe']),
+            ]),
+            self::canonicalParts($mapper->map(['Chief', 'Medical', 'Jane', 'Doe'])),
         );
-        $this->assertEquals(
-            [new Salutation('Chief', 'Chief'), 'Jane', 'Doe'],
-            $mapper->map(['Chief', 'Jane', 'Doe']),
+        $this->assertSame(
+            self::canonicalParts([new Salutation('Chief', 'Chief'), 'Jane', 'Doe']),
+            self::canonicalParts($mapper->map(['Chief', 'Jane', 'Doe'])),
         );
     }
 }

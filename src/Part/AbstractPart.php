@@ -31,6 +31,13 @@ abstract class AbstractPart
     /**
      * set the value to wrap
      * (can take string or part instance)
+     *
+     * Parts are frozen after mapping: the mapper fixes the rendered form at
+     * map time (pre-normalized parts keep their dictionary form, camelcased
+     * parts memoize off the mapped value), so mutating a mapped part leaves
+     * normalize() out of sync with getValue(). The method stays public only
+     * for the released 1.x API (external callers mutate unmapped parts);
+     * Name::getPartner() defensively clones instead of re-pointing values.
      */
     public function setValue(string|AbstractPart $value): static
     {

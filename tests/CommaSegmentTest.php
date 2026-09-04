@@ -14,6 +14,8 @@ use PHPUnit\Framework\TestCase;
  */
 class CommaSegmentTest extends TestCase
 {
+    use LoneSalutationCases;
+
     /**
      * @return array<string, array{string, string, string, string, string}>
      */
@@ -140,15 +142,25 @@ class CommaSegmentTest extends TestCase
 
     /**
      * a surname segment that is nothing but a salutation must keep it a
-     * salutation, not promote it to a last name
+     * salutation, not promote it to a last name (shared lock: see
+     * LoneSalutationCases)
      */
-    public function testLoneSalutationSurnameSegmentStaysSalutation(): void
-    {
-        $name = (new Parser())->parse('Dr., John');
+    #[DataProvider('loneSalutationProvider')]
+    public function testLoneSalutationSurnameSegmentStaysSalutation(
+        string $input,
+        string $salutation,
+        string $first,
+        string $last,
+        string $initials,
+        string $suffix,
+    ): void {
+        $name = (new Parser())->parse($input);
 
-        $this->assertSame('Dr.', $name->getSalutation());
-        $this->assertSame('John', $name->getFirstname());
-        $this->assertSame('', $name->getLastname());
+        $this->assertSame($salutation, $name->getSalutation(), "salutation for '$input'");
+        $this->assertSame($first, $name->getFirstname(), "firstname for '$input'");
+        $this->assertSame($last, $name->getLastname(), "lastname for '$input'");
+        $this->assertSame($initials, $name->getInitials(), "initials for '$input'");
+        $this->assertSame($suffix, $name->getSuffix(), "suffix for '$input'");
     }
 
     /**
@@ -402,5 +414,37 @@ class CommaSegmentTest extends TestCase
         $this->assertSame('Maria', $name->getFirstname());
         $this->assertSame('Hidalgo Castillo', $name->getLastname());
         $this->assertSame('Hid', $name->getNickname());
+    }
+
+    /**
+     * The multibyte-delimiter char scan bails past 4096 bytes (real names are
+     * tiny; hostile megabyte rows split unshielded by design), so a shielded
+     * nickname comma just under the cliff stays shielded while the same row
+     * one byte over bisects surname/given. The single-byte fast path has no
+     * cap, so the pair configures multibyte delimiters («») to pin the guard
+     * itself rather than the fast path.
+     *
+     * @return array<string, array{int, string, string}>
+     */
+    public static function nicknameShieldCliffProvider(): array
+    {
+        // total input bytes, expected firstname, expected nickname
+        return [
+            'just under the cliff stays shielded' => [4096, 'John', 'Bob, Jr'],
+            'just over the cliff splits unshielded' => [4097, "Jr\u{00BB}", ''],
+        ];
+    }
+
+    #[DataProvider('nicknameShieldCliffProvider')]
+    public function testMultibyteNicknameShieldCliff(int $totalBytes, string $first, string $nickname): void
+    {
+        $core = "John \u{00AB}Bob, Jr\u{00BB} Doe";
+        $input = $core . ' ' . str_repeat('z', $totalBytes - strlen($core) - 1);
+        $this->assertSame($totalBytes, strlen($input));
+
+        $name = (new Parser())->setNicknameDelimiters(["\u{00AB}" => "\u{00BB}"])->parse($input);
+
+        $this->assertSame($first, $name->getFirstname(), "firstname at {$totalBytes} bytes");
+        $this->assertSame($nickname, $name->getNickname(), "nickname at {$totalBytes} bytes");
     }
 }

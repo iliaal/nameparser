@@ -247,15 +247,15 @@ class NicknameMapperTest extends AbstractMapperTestCase
             '<<' => '>>',
         ]);
 
-        $this->assertEquals(
-            [
+        $this->assertSame(
+            self::canonicalParts([
                 'John',
                 new Nickname('Bob'),
                 new Nickname('<<X)'),
                 new Nickname('Y>>'),
                 new Nickname('Z'),
-            ],
-            $mapper->map(['John', '(Bob', '<<X)', 'Y>>', 'Z)']),
+            ]),
+            self::canonicalParts($mapper->map(['John', '(Bob', '<<X)', 'Y>>', 'Z)'])),
         );
     }
 

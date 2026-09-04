@@ -10,9 +10,18 @@ class PerformanceTest extends TestCase
 {
     private const float MAX_SECONDS = 1.5;
 
-    private const float MAX_SCALING_RATIO = 3.0;
+    // 2x input at linear scaling costs 2x time; 2.5x allows ~25% scheduling
+    // noise while still failing a persistently superlinear pipeline. The old
+    // 3.0x blessed ~1.5x creep per doubling, letting quadratic drift merge.
+    private const float MAX_SCALING_RATIO = 2.5;
 
     private const int SCALING_SAMPLES = 3;
+
+    // Fixed-corpus throughput floor: order-of-magnitude collapse trips here
+    // even when the scaling ratio stays linear (a uniformly 10x slowdown is
+    // still linear). Sized ~4x below measured throughput (~8000 names/sec)
+    // so loaded CI hosts do not flake a healthy pipeline.
+    private const float MIN_CORPUS_NAMES_PER_SECOND = 2000.0;
 
     private const int MAX_INPUT_BYTES = 1024 * 1024;
 
@@ -52,13 +61,17 @@ class PerformanceTest extends TestCase
 
     public function testNestedNicknameDepthRemainsBoundedAtBatchScale(): void
     {
-        $elapsed = $this->parseSeconds(
-            str_repeat('( ', 16000) . str_repeat(') ', 16000) . 'Smith',
+        // median CPU time over samples: a single wall-clock sample flakes on
+        // shared CI, while the median only trips on a persistent slowdown.
+        $input = str_repeat('( ', 16000) . str_repeat(') ', 16000) . 'Smith';
+        $elapsed = $this->medianCpuSeconds(
+            static function () use ($input): void {
+                (new Parser())->parse($input);
+            },
         );
 
         $this->assertLessThan(0.2, $elapsed);
     }
-
     public function testCommaHeavyInputUsesBoundedWorkingMemory(): void
     {
         $input = 'Smith,' . str_repeat(',', 500000);
@@ -87,12 +100,14 @@ class PerformanceTest extends TestCase
         ini_set('pcre.jit', '0');
 
         try {
-            $started = hrtime(true);
-            $word = 'A' . str_repeat('a', 1023);
-            for ($i = 0; $i < 250; ++$i) {
-                (new Lastname($word))->normalize();
-            }
-            $elapsed = (hrtime(true) - $started) / 1_000_000_000;
+            $elapsed = $this->medianCpuSeconds(
+                static function (): void {
+                    $word = 'A' . str_repeat('a', 1023);
+                    for ($i = 0; $i < 250; ++$i) {
+                        (new Lastname($word))->normalize();
+                    }
+                },
+            );
         } finally {
             if ($jit !== false) {
                 ini_set('pcre.jit', $jit);
@@ -111,9 +126,12 @@ class PerformanceTest extends TestCase
         }
 
         $parser = (new Parser())->setNicknameDelimiters($delimiters);
-        $started = hrtime(true);
-        $parser->parse(str_repeat('a', 4094) . ',X');
-        $elapsed = (hrtime(true) - $started) / 1_000_000_000;
+        $input = str_repeat('a', 4094) . ',X';
+        $elapsed = $this->medianCpuSeconds(
+            static function () use ($parser, $input): void {
+                $parser->parse($input);
+            },
+        );
 
         $this->assertLessThan(0.15, $elapsed);
     }
@@ -136,7 +154,47 @@ class PerformanceTest extends TestCase
     {
         $input = str_repeat('A,', self::MAX_INPUT_TOKENS - 1) . 'A';
 
-        $this->assertSame($input, (new Parser())->parse($input)->getSource());
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($input, $name->getSource());
+        // the exact-budget input parses to fields, not just a source echo:
+        // the token stream still yields a firstname and a lastname.
+        $this->assertSame('A', $name->getFirstname());
+        $this->assertSame('A', $name->getLastname());
+    }
+
+    public function testFixedCorpusThroughputFloor(): void
+    {
+        // realistic mixed batch (joint, comma, credential, nickname,
+        // particle, multibyte rows); median CPU time over samples so a
+        // loaded CI host does not flake a healthy pipeline.
+        $corpus = [
+            'James Norrington',
+            'Mr. and Mrs. Brad Smith',
+            'Smith, John, MD, PhD',
+            'Herr Schmidt',
+            'Kim Jong Un',
+            'Jimmy (Bubba) Smith',
+            'Elizabeth De La Torre',
+            'Dr. Jonathan Smith',
+            'Williams, Hank, Jr.',
+            'Thái Quốc Nguyễn',
+        ];
+        $elapsed = $this->medianCpuSeconds(
+            static function () use ($corpus): void {
+                foreach ($corpus as $input) {
+                    (new Parser())->parse($input)->toArray();
+                }
+            },
+            5,
+        );
+
+        $this->assertGreaterThan(0, $elapsed);
+        $this->assertGreaterThan(
+            self::MIN_CORPUS_NAMES_PER_SECOND,
+            count($corpus) / $elapsed,
+            'corpus throughput names/sec',
+        );
     }
 
     public function testRejectsInputOverCommaTokenBudget(): void
@@ -199,6 +257,10 @@ class PerformanceTest extends TestCase
     }
 
     /**
+     * The sizes are operation counts (tokens), not bytes, so the ratio pins
+     * work scaling: doubling the tokens must not more than 2.5x the CPU.
+     * Samples interleave small/large and take the median to starve flakes.
+     *
      * @param  callable(int): string  $input
      */
     private function assertLinearScaling(
@@ -266,12 +328,28 @@ class PerformanceTest extends TestCase
             + (($usage['ru_utime.tv_usec'] + $usage['ru_stime.tv_usec']) / 1_000_000);
     }
 
-    private function parseSeconds(string $input, bool $surnameFirst = false): float
+    /**
+     * Median CPU time over repeated runs of arbitrary work: CPU time (not
+     * wall clock) so scheduling jitter on shared CI cannot flake the gate,
+     * and the median so one slow sample cannot fail a healthy pipeline.
+     */
+    private function medianCpuSeconds(callable $work, int $samples = 3): float
     {
-        $started = hrtime(true);
-        $parser = (new Parser())->setSurnameFirst($surnameFirst);
-        $parser->parse($input)->toArray();
+        $timings = [];
+        for ($sample = 0; $sample < $samples; ++$sample) {
+            $started = getrusage();
+            $work();
+            $finished = getrusage();
+            if ($started === false || $finished === false) {
+                self::fail('Unable to read process CPU usage.');
+            }
 
-        return (hrtime(true) - $started) / 1_000_000_000;
+            $timings[] = $this->cpuSeconds($finished) - $this->cpuSeconds($started);
+        }
+        if ($timings === []) {
+            self::fail('No timing samples were collected.');
+        }
+
+        return $this->median($timings);
     }
 }
