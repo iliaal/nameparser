@@ -73,11 +73,13 @@ abstract class AbstractMapper
     }
 
     /**
-     * true when every unmapped cased token is uppercase and none carries a
-     * lowercase letter, i.e. the input casing gives no signal (all-caps registry
-     * data). Already-mapped parts are ignored because their normalized values
-     * may differ from the original token casing. When $override is non-null it
-     * is returned as-is (comma pipeline whole-input signal).
+     * true when every unmapped cased token is uppercase, i.e. the input casing
+     * gives no signal (all-caps registry data). Already-mapped parts are
+     * ignored because their normalized values may differ from the original
+     * token casing. When $override is non-null it is returned as-is (comma
+     * pipeline whole-input signal). Single-sourced through
+     * Text::isUniformUpperTokens(); caseless and digit-only tokens carry no
+     * signal either way.
      *
      * @param  PartArray  $parts
      */
@@ -87,28 +89,57 @@ abstract class AbstractMapper
             return $override;
         }
 
-        $hasUpper = false;
+        $tokens = [];
 
         foreach ($parts as $part) {
             if ($part instanceof AbstractPart) {
                 continue;
             }
 
-            $letters = Text::letters($part);
-
-            if ($letters === '') {
-                continue;
-            }
-
-            if (mb_strtoupper($letters, 'UTF-8') !== $letters) {
-                return false;
-            }
-
-            if ($letters !== mb_strtolower($letters, 'UTF-8')) {
-                $hasUpper = true;
-            }
+            $tokens[] = $part;
         }
 
-        return $hasUpper;
+        return Text::isUniformUpperTokens($tokens);
+    }
+
+    /**
+     * Centralized reset for the sticky @internal whole-input casing overrides
+     * (CR-023 minimal path: no parse-context map() argument, so the temporal
+     * coupling remains and is contained here). A map() signature change would
+     * ripple through every Parser call site plus external callers; instead the
+     * override stays setter-carried and Parser::parse() funnels its entry reset
+     * through this one helper rather than an inline instanceof loop.
+     * Confidence never sets overrides (fresh mappers per assess()), so only
+     * the Parser pipelines need it.
+     *
+     * @param  iterable<int, AbstractMapper>  $mappers
+     */
+    public static function resetUniformUpperOverrides(iterable $mappers): void
+    {
+        foreach ($mappers as $mapper) {
+            if ($mapper instanceof SuffixMapper || $mapper instanceof InitialMapper) {
+                $mapper->setUniformUpperOverride(null);
+            }
+        }
+    }
+
+    /**
+     * Shared decoration-analyzer construction (CR-023 minimal path: the
+     * factory both Confidence and SalutationMapper route through instead of
+     * each hand-building the pair). Ordering knowledge stays with the caller:
+     * Confidence maps nickname-then-suffix, SalutationMapper::analyzeRemainder
+     * maps suffix-nickname-suffix; only the construction (dictionaries,
+     * matchSinglePart, reservedParts) is shared here.
+     *
+     * @param  array<int|string, string>  $suffixes
+     * @param  array<string, string>  $delimiters
+     * @return array{suffix: SuffixMapper, nickname: NicknameMapper}
+     */
+    public static function decorationAnalyzers(array $suffixes, array $delimiters): array
+    {
+        return [
+            'suffix' => new SuffixMapper($suffixes, true, 0, $delimiters),
+            'nickname' => new NicknameMapper($delimiters),
+        ];
     }
 }

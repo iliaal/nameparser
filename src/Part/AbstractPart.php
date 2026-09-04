@@ -2,6 +2,8 @@
 
 namespace Iliaal\NameParser\Part;
 
+use Iliaal\NameParser\Text;
+
 abstract class AbstractPart
 {
     /**
@@ -72,9 +74,12 @@ abstract class AbstractPart
         $this->camelcaseCacheWord = $word;
 
         $caseShape = preg_replace('/\p{M}/u', '', $word) ?? $word;
+        // routed through Text so caseless scripts and digit-only tokens read
+        // exactly as the mapper-level case gates see them; outcome matches the
+        // old whole-string strtoupper/strtolower compares on every input.
         $isMixedCase = strlen($caseShape) <= 1024
-            && $caseShape !== mb_strtoupper($caseShape, 'UTF-8')
-            && $caseShape !== mb_strtolower($caseShape, 'UTF-8')
+            && ! Text::isUpperCase($caseShape)
+            && ! Text::isLowerCase($caseShape)
             && $this->hasInternalCaseTransition($caseShape);
 
         if ($isMixedCase) {

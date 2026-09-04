@@ -156,7 +156,11 @@ class SuffixMapper extends AbstractMapper
         $candidateIndexes = [];
         $mappedSuffix = false;
         $crossedBridge = false;
-
+        // prefix opener-presence table: one bool per (delimiter pair, token
+        // position) recording whether an unmatched opener appeared in any
+        // earlier raw token, so the per-suffix isSpanTailToken() check is O(1)
+        // instead of re-scanning all earlier parts with paired substr_count.
+        $spanOpenerPrefix = $this->buildSpanOpenerPrefix($parts);
         for ($k = count($parts) - 1; $k >= 0; $k--) {
             if (isset($leadingSet[$k])) {
                 continue;
@@ -213,7 +217,7 @@ class SuffixMapper extends AbstractMapper
             // ("Jr)" in "(Bob Jr)"); consuming it would orphan the opener and
             // shred the span. A stray closer with no earlier opener
             // ("John Smith MD)") is ordinary trailing punctuation and maps.
-            if ($this->isSpanTailToken($parts, $k)) {
+            if ($this->isSpanTailToken($parts, $k, $spanOpenerPrefix)) {
                 break;
             }
 
@@ -492,21 +496,86 @@ class SuffixMapper extends AbstractMapper
     }
 
     /**
+     * Prefix opener-presence table, one column per span delimiter pair: the
+     * column entry at each token position records whether an unmatched opener
+     * appeared in any earlier raw token. Built once per map() in a single
+     * linear pass so the per-suffix isSpanTailToken() check below is O(1).
+     * Empty when no token can open a span (no delimiters configured, or no
+     * delimiter byte anywhere in the row), in which case nothing is a tail.
+     *
+     * @param  PartArray  $parts
+     * @return list<list<bool>>
+     */
+    private function buildSpanOpenerPrefix(array $parts): array
+    {
+        if ($this->spanDelimiterBytes === '') {
+            return [];
+        }
+
+        $hasDelimiterByte = false;
+
+        foreach ($parts as $part) {
+            if (is_string($part) && strpbrk($part, $this->spanDelimiterBytes) !== false) {
+                $hasDelimiterByte = true;
+
+                break;
+            }
+        }
+
+        if (! $hasDelimiterByte) {
+            return [];
+        }
+
+        $prefix = [];
+
+        foreach ($this->spanDelimiters as $open => $close) {
+            $open = (string) $open;
+            $symmetric = $open === $close;
+            $seen = false;
+            $column = [];
+
+            foreach ($parts as $part) {
+                $column[] = $seen;
+
+                if (! is_string($part)) {
+                    continue;
+                }
+
+                if ($symmetric
+                    ? substr_count($part, $open) % 2 === 1
+                    : substr_count($part, $open) > substr_count($part, $close)) {
+                    $seen = true;
+                }
+            }
+
+            $prefix[] = $column;
+        }
+
+        return $prefix;
+    }
+
+    /**
      * true when the token's unbalanced closing delimiter pairs with an
      * unmatched opener in an earlier raw token, i.e. the token is the tail of
      * a multi-token nickname span ("(Bob Jr)"). A self-contained "(MD)" is
      * balanced, and a stray closer with no earlier opener is not a span tail.
+     * The earlier-opener half is an O(1) lookup into the prefix table built by
+     * buildSpanOpenerPrefix(), not a re-scan of all earlier parts.
      *
      * @param  PartArray  $parts
+     * @param  list<list<bool>>  $spanOpenerPrefix
      */
-    private function isSpanTailToken(array $parts, int $index): bool
+    private function isSpanTailToken(array $parts, int $index, array $spanOpenerPrefix = []): bool
     {
         $part = $parts[$index];
         if (! is_string($part)
             || $this->spanDelimiterBytes === ''
+            || $spanOpenerPrefix === []
             || strpbrk($part, $this->spanDelimiterBytes) === false) {
             return false;
         }
+
+        $pair = 0;
 
         foreach ($this->spanDelimiters as $open => $close) {
             $open = (string) $open;
@@ -514,24 +583,21 @@ class SuffixMapper extends AbstractMapper
 
             if ($symmetric) {
                 if (substr_count($part, $open) % 2 !== 1) {
+                    $pair++;
+
                     continue;
                 }
             } elseif (substr_count($part, $close) <= substr_count($part, $open)) {
+                $pair++;
+
                 continue;
             }
 
-            for ($j = 0; $j < $index; $j++) {
-                $previous = $parts[$j];
-                if (! is_string($previous)) {
-                    continue;
-                }
-
-                if ($symmetric
-                    ? substr_count($previous, $open) % 2 === 1
-                    : substr_count($previous, $open) > substr_count($previous, $close)) {
-                    return true;
-                }
+            if ($spanOpenerPrefix[$pair][$index] ?? false) {
+                return true;
             }
+
+            $pair++;
         }
 
         return false;

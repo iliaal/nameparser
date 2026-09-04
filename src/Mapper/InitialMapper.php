@@ -100,14 +100,14 @@ class InitialMapper extends AbstractMapper
                 continue;
             }
 
-            if ($splitCombined && mb_strtoupper($part, 'UTF-8') === $part) {
+            if ($splitCombined && Text::isUpperCase($part)) {
                 $stripped = str_replace('.', '', $part);
                 $length = Text::graphemeLengthUpTo($stripped, $this->combinedMax + 1);
 
-                // caseless scripts (CJK, Hebrew) are trivially "uppercase", so the
-                // gate above passes for a 2-char given name like "李明". Only split
-                // when the token carries genuine cased capitals, otherwise the name
-                // is shredded into bogus initials.
+                // Text::isUpperCase() already rejects caseless scripts (CJK,
+                // Hebrew) and digit-only tokens, so a 2-char given name like
+                // "李明" or "123" never reaches the split. The cased check below
+                // is a second gate on the dot-stripped form.
                 if (
                     $length > 1
                     && $length <= $this->combinedMax

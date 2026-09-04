@@ -19,6 +19,26 @@ final class Text
 
     private const int MAX_NICKNAME_DELIMITER_PAIRS = 32;
 
+    /**
+     * entries evicted oldest-first a quarter at a time, so a batch of unique
+     * tokens degrades gradually instead of falling off the wholesale-clear
+     * cliff (np-cr-015)
+     */
+    private const int MAX_KEY_CACHE_ENTRIES = 4096;
+
+    private const int KEY_CACHE_EVICT_BATCH = 1024;
+
+    /**
+     * repeat lookups of mid-size tokens (65..4096 bytes) stay cheap without
+     * letting huge tokens pin megabytes in the main table; anything larger
+     * bypasses the cache (never a real name token)
+     */
+    private const int MAX_LONG_KEY_BYTES = 4096;
+
+    private const int MAX_LONG_KEY_CACHE_ENTRIES = 256;
+
+    private const int LONG_KEY_CACHE_EVICT_BATCH = 64;
+
     private const array CREDENTIAL_TAIL_NOISE_KEYS = [
         'unknown' => true,
     ];
@@ -27,6 +47,11 @@ final class Text
      * @var array<string, string>
      */
     private static array $cache = [];
+
+    /**
+     * @var array<string, string>
+     */
+    private static array $longCache = [];
 
     public static function assertInputByteBudget(string $input): void
     {
@@ -54,8 +79,27 @@ final class Text
         // the entry cap bounds the count, not the bytes: a run of huge unique
         // tokens would retain megabytes, and nothing that long is a name worth
         // caching anyway
-        if (strlen($word) > 64) {
+        $length = strlen($word);
+
+        if ($length > self::MAX_LONG_KEY_BYTES) {
             return self::transform($word);
+        }
+
+        if ($length > 64) {
+            if (isset(self::$longCache[$word])) {
+                return self::$longCache[$word];
+            }
+
+            if (count(self::$longCache) >= self::MAX_LONG_KEY_CACHE_ENTRIES) {
+                self::$longCache = array_slice(
+                    self::$longCache,
+                    self::LONG_KEY_CACHE_EVICT_BATCH,
+                    null,
+                    true,
+                );
+            }
+
+            return self::$longCache[$word] = self::transform($word);
         }
 
         if (isset(self::$cache[$word])) {
@@ -63,12 +107,27 @@ final class Text
         }
 
         // pure, config-independent transform, so cached entries never go stale;
-        // cap the table and drop it wholesale to bound memory on huge batches.
-        if (count(self::$cache) >= 4096) {
-            self::$cache = [];
+        // evict the oldest quarter instead of dropping the table wholesale, so
+        // large unique-token batches degrade gradually (no 4096-entry cliff).
+        if (count(self::$cache) >= self::MAX_KEY_CACHE_ENTRIES) {
+            self::$cache = array_slice(
+                self::$cache,
+                self::KEY_CACHE_EVICT_BATCH,
+                null,
+                true,
+            );
         }
 
         return self::$cache[$word] = self::transform($word);
+    }
+
+    /**
+     * release cached key transforms (long-running importers)
+     */
+    public static function clearCache(): void
+    {
+        self::$cache = [];
+        self::$longCache = [];
     }
 
     private static function transform(string $word): string
@@ -145,13 +204,28 @@ final class Text
                     && strlen($open) <= self::MAX_NICKNAME_DELIMITER_BYTES
                     && strlen($close) <= self::MAX_NICKNAME_DELIMITER_BYTES
                     && mb_check_encoding($open, 'UTF-8')
-                    && mb_check_encoding($close, 'UTF-8'),
+                    && mb_check_encoding($close, 'UTF-8')
+                    && ! self::containsStructuralChar($open)
+                    && ! self::containsStructuralChar($close),
                 ARRAY_FILTER_USE_BOTH,
             ),
             0,
             self::MAX_NICKNAME_DELIMITER_PAIRS,
             true,
         );
+    }
+
+    /**
+     * a delimiter containing a comma, NUL (the comma-mask placeholder), or any
+     * whitespace/control character would silently corrupt the structural-comma
+     * split or space tokenization (e.g. ',' => ',' shields every comma), so
+     * such pairs are ignored (np-cr-012)
+     */
+    private static function containsStructuralChar(string $delimiter): bool
+    {
+        return str_contains($delimiter, ',')
+            || str_contains($delimiter, "\x00")
+            || preg_match('/[\s\p{Cc}]/u', $delimiter) === 1;
     }
 
     public static function isCredentialTailNoise(string $token): bool
@@ -161,6 +235,71 @@ final class Text
         }
 
         return preg_match('/[\p{L}\p{N}]/u', $token) !== 1;
+    }
+
+    /**
+     * true for the attested placeholder set ('Unknown'): dropped as credential
+     * noise wherever an anchor exists, unlike punctuation-only noise which is
+     * scoped to credential-bearing segments (np-cr-014, np-o-04)
+     */
+    public static function isCredentialPlaceholder(string $token): bool
+    {
+        return isset(self::CREDENTIAL_TAIL_NOISE_KEYS[self::key($token)]);
+    }
+
+    /**
+     * the token's letters plus the case signals derived from them in a single
+     * pass: one letters() regex instead of one per predicate (np-cr-016).
+     * `upper`/`lower` carry the isUpperCase()/isLowerCase() semantics exactly
+     * (letters exist, all one case, and the script has case).
+     *
+     * @return array{letters: string, upper: bool, lower: bool, cased: bool}
+     */
+    public static function analyzeToken(string $word): array
+    {
+        $letters = self::letters($word);
+
+        if ($letters === '') {
+            return ['letters' => '', 'upper' => false, 'lower' => false, 'cased' => false];
+        }
+
+        $upper = mb_strtoupper($letters, 'UTF-8');
+        $lower = mb_strtolower($letters, 'UTF-8');
+        $cased = $upper !== $lower;
+
+        return [
+            'letters' => $letters,
+            'upper' => $cased && $letters === $upper,
+            'lower' => $cased && $letters === $lower,
+            'cased' => $cased,
+        ];
+    }
+
+    /**
+     * true when every cased token is uppercase and at least one cased token
+     * exists (letters via letters(), caseless scripts via isCased semantics)
+     *
+     * @param  list<string>  $tokens
+     */
+    public static function isUniformUpperTokens(array $tokens): bool
+    {
+        $hasCased = false;
+
+        foreach ($tokens as $token) {
+            $analysis = self::analyzeToken((string) $token);
+
+            if (! $analysis['cased']) {
+                continue;
+            }
+
+            $hasCased = true;
+
+            if (! $analysis['upper']) {
+                return false;
+            }
+        }
+
+        return $hasCased;
     }
 
     /**
@@ -183,14 +322,7 @@ final class Text
      */
     public static function isUpperCase(string $word): bool
     {
-        $letters = self::letters($word);
-
-        if ($letters === '') {
-            return false;
-        }
-
-        return $letters === mb_strtoupper($letters, 'UTF-8')
-            && $letters !== mb_strtolower($letters, 'UTF-8');
+        return self::analyzeToken($word)['upper'];
     }
 
     /**
@@ -198,14 +330,7 @@ final class Text
      */
     public static function isLowerCase(string $word): bool
     {
-        $letters = self::letters($word);
-
-        if ($letters === '') {
-            return false;
-        }
-
-        return $letters === mb_strtolower($letters, 'UTF-8')
-            && $letters !== mb_strtoupper($letters, 'UTF-8');
+        return self::analyzeToken($word)['lower'];
     }
 
     /**
@@ -214,10 +339,7 @@ final class Text
      */
     public static function isCased(string $word): bool
     {
-        $letters = self::letters($word);
-
-        return $letters !== ''
-            && mb_strtolower($letters, 'UTF-8') !== mb_strtoupper($letters, 'UTF-8');
+        return self::analyzeToken($word)['cased'];
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace Iliaal\NameParser;
 
 use Iliaal\NameParser\Language\English;
+use Iliaal\NameParser\Mapper\AbstractMapper;
 use Iliaal\NameParser\Mapper\NicknameMapper;
 use Iliaal\NameParser\Mapper\SalutationMapper;
 use Iliaal\NameParser\Mapper\SuffixMapper;
@@ -19,9 +20,16 @@ class Confidence
      * When suffixes are supplied, only collisions present in that parser's
      * configured dictionaries contribute to the result.
      *
+     * Nickname delimiters and whitespace mirror the Parser configuration the
+     * input was parsed with (Name::getConfidence() forwards the stored
+     * values): decoration mapping and comma splitting then agree with the
+     * parse instead of silently falling back to defaults. Null keeps the
+     * historical default-config behavior.
+     *
      * @param  array<int|string, string>|null  $suffixes
      * @param  array<int|string, string>|null  $salutations
      * @param  list<string>|null  $tokens
+     * @param  array<string, string>|null  $nicknameDelimiters
      * @return array{ambiguous: bool, notes: list<string>}
      */
     public static function assess(
@@ -29,13 +37,15 @@ class Confidence
         ?array $suffixes = null,
         ?array $salutations = null,
         ?array $tokens = null,
+        ?array $nicknameDelimiters = null,
+        ?string $whitespace = null,
     ): array {
         Text::assertInputByteBudget($original);
         $validUtf8 = mb_check_encoding($original, 'UTF-8');
 
         if ($tokens !== null) {
             self::assertSuppliedTokenBudgets($tokens);
-            self::assertOriginalTokenBudget($original, $validUtf8);
+            self::assertOriginalTokenBudget($original, $validUtf8, $whitespace);
         }
 
         if (! $validUtf8) {
@@ -54,7 +64,7 @@ class Confidence
 
         if ($tokens === null) {
             $tokens = preg_split(
-                '/[\s,]+/u',
+                self::tokenSplitPattern($whitespace, true),
                 trim($original),
                 Text::MAX_INPUT_TOKENS + 1,
                 PREG_SPLIT_NO_EMPTY,
@@ -62,30 +72,12 @@ class Confidence
             Text::assertInputTokenCount(count($tokens));
         }
 
-        // derive uniform-case from tokens (same shape as the parser), never from
-        // a whole-string letters() strip on multi-megabyte hostile rows
-        $uniformUpper = true;
-        $uniformLower = true;
-        $hasCased = false;
-        foreach ($tokens as $token) {
-            $letters = Text::letters($token);
-            if ($letters === '') {
-                continue;
-            }
-            $hasCased = $hasCased
-                || $letters !== mb_strtolower($letters, 'UTF-8')
-                || $letters !== mb_strtoupper($letters, 'UTF-8');
-            if ($letters !== mb_strtoupper($letters, 'UTF-8')) {
-                $uniformUpper = false;
-            }
-            if ($letters !== mb_strtolower($letters, 'UTF-8')) {
-                $uniformLower = false;
-            }
-        }
-        if (! $hasCased) {
-            $uniformUpper = false;
-            $uniformLower = false;
-        }
+        // uniform-case from tokens (same shape as the parser), never from a
+        // whole-string letters() strip on multi-megabyte hostile rows;
+        // single-sourced through Text so caseless/digit-only tokens read
+        // exactly as the mapper-level gates see them
+        $uniformUpper = Text::isUniformUpperTokens($tokens);
+        $uniformLower = self::isUniformLowerTokens($tokens);
 
         /** @var array<string, true> $notes */
         $notes = [];
@@ -127,9 +119,9 @@ class Confidence
             // whether a colliding leading title is a salutation or a given
             // name. A comma settles it only when name-bearing content exists
             // on both sides.
-            $nameTokens = self::rawNameTokens(self::mapDecorations($tokens, $suffixes));
+            $nameTokens = self::rawNameTokens(self::mapDecorations($tokens, $suffixes, $nicknameDelimiters));
             if (count($nameTokens) === 2
-                && ! self::hasDecidingStructuralComma($original, $suffixes)) {
+                && ! self::hasDecidingStructuralComma($original, $suffixes, $nicknameDelimiters, $whitespace)) {
                 $notes["'{$lead}' could be a name or a salutation; nothing in the input decides it"] = true;
             }
         }
@@ -155,14 +147,14 @@ class Confidence
         }
     }
 
-    private static function assertOriginalTokenBudget(string $original, bool $validUtf8): void
+    private static function assertOriginalTokenBudget(string $original, bool $validUtf8, ?string $whitespace = null): void
     {
         if (strlen($original) < (Text::MAX_INPUT_TOKENS * 2) + 1) {
             return;
         }
 
         $tokens = preg_split(
-            $validUtf8 ? '/[\s,]+/u' : '/[\s,]+/',
+            $validUtf8 ? self::tokenSplitPattern($whitespace, true) : '/[\s,]+/',
             trim($original),
             Text::MAX_INPUT_TOKENS + 1,
             PREG_SPLIT_NO_EMPTY,
@@ -171,15 +163,64 @@ class Confidence
     }
 
     /**
+     * Token-split pattern for the configured whitespace: null keeps the
+     * historical default-config behavior; otherwise the split mirrors the
+     * Parser's whitespace handling for the same input (an empty set collapses
+     * nothing, so plain spaces still separate, matching tokenizeWords()).
+     */
+    private static function tokenSplitPattern(?string $whitespace, bool $withComma): string
+    {
+        if ($whitespace === null) {
+            return $withComma ? '/[\s,]+/u' : '/\s+/u';
+        }
+
+        if ($whitespace === '') {
+            return $withComma ? '/[ ,]+/u' : '/ +/u';
+        }
+
+        $class = '[' . preg_quote($whitespace, '/') . ($withComma ? ',' : '') . ']+';
+
+        return '/' . $class . '/u';
+    }
+
+    /**
+     * @param  list<string>  $tokens
+     */
+    private static function isUniformLowerTokens(array $tokens): bool
+    {
+        $hasCased = false;
+
+        foreach ($tokens as $token) {
+            if (! Text::isCased($token)) {
+                continue;
+            }
+
+            $hasCased = true;
+
+            if (! Text::isLowerCase($token)) {
+                return false;
+            }
+        }
+
+        return $hasCased;
+    }
+
+    /**
      * @param  list<string>  $tokens
      * @param  array<int|string, string>|null  $suffixes
+     * @param  array<string, string>|null  $nicknameDelimiters
      * @return array<int, \Iliaal\NameParser\Part\AbstractPart|string>
      */
-    private static function mapDecorations(array $tokens, ?array $suffixes): array
+    private static function mapDecorations(array $tokens, ?array $suffixes, ?array $nicknameDelimiters = null): array
     {
-        $parts = (new NicknameMapper())->map($tokens);
+        // shared factory construction (CR-023 minimal path): same
+        // nickname-then-suffix order as before, built in one place
+        ['suffix' => $suffixMapper, 'nickname' => $nicknameMapper] = AbstractMapper::decorationAnalyzers(
+            $suffixes ?? English::SUFFIXES,
+            $nicknameDelimiters ?? [],
+        );
 
-        return (new SuffixMapper($suffixes ?? English::SUFFIXES, true, 0))->map($parts);
+        return $suffixMapper->map($nicknameMapper->map($tokens));
     }
 
     /**
@@ -195,15 +236,30 @@ class Confidence
     }
 
     /**
+     * Whether a structural comma sits between name-bearing content on both
+     * sides. Single-pass: each comma segment is decoration-mapped once with a
+     * reused suffix mapper, recording the first and last name-bearing segment;
+     * a deciding boundary exists exactly when those differ. The old
+     * per-boundary full re-merge plus two fresh SuffixMapper passes never
+     * early-returned on hostile all-suffix rows (all ~65k boundaries each
+     * re-mapped O(n) tokens); this is linear in the input.
+     *
      * @param  array<int|string, string>|null  $suffixes
+     * @param  array<string, string>|null  $nicknameDelimiters
      */
-    private static function hasDecidingStructuralComma(string $original, ?array $suffixes): bool
-    {
+    private static function hasDecidingStructuralComma(
+        string $original,
+        ?array $suffixes,
+        ?array $nicknameDelimiters = null,
+        ?string $whitespace = null,
+    ): bool {
         if (! str_contains($original, ',')) {
             return false;
         }
 
-        $parts = (new NicknameMapper())->map(self::splitCommaMarkers($original));
+        $parts = (new NicknameMapper($nicknameDelimiters ?? []))->map(
+            self::splitCommaMarkers($original, $whitespace),
+        );
 
         /** @var list<array<int, \Iliaal\NameParser\Part\AbstractPart|string>> $segments */
         $segments = [[]];
@@ -217,17 +273,23 @@ class Confidence
             $segments[array_key_last($segments)][] = $part;
         }
 
-        for ($boundary = 1; $boundary < count($segments); $boundary++) {
-            $left = array_merge(...array_slice($segments, 0, $boundary));
-            $right = array_merge(...array_slice($segments, $boundary));
+        ['suffix' => $suffixMapper] = AbstractMapper::decorationAnalyzers(
+            $suffixes ?? English::SUFFIXES,
+            $nicknameDelimiters ?? [],
+        );
 
-            if (self::rawNameTokens(self::mapPartDecorations($left, $suffixes)) !== []
-                && self::rawNameTokens(self::mapPartDecorations($right, $suffixes)) !== []) {
-                return true;
+        $firstNameBearing = null;
+        $lastNameBearing = null;
+        foreach ($segments as $index => $segment) {
+            if (self::rawNameTokens($suffixMapper->map($segment)) !== []) {
+                $firstNameBearing ??= $index;
+                $lastNameBearing = $index;
             }
         }
 
-        return false;
+        return $firstNameBearing !== null
+            && $lastNameBearing !== null
+            && $firstNameBearing !== $lastNameBearing;
     }
 
     /**
@@ -236,10 +298,10 @@ class Confidence
      *
      * @return list<string>
      */
-    private static function splitCommaMarkers(string $original): array
+    private static function splitCommaMarkers(string $original, ?string $whitespace = null): array
     {
         $chunks = preg_split(
-            '/\s+/u',
+            self::tokenSplitPattern($whitespace, false),
             trim($original),
             Text::MAX_INPUT_TOKENS + 1,
             PREG_SPLIT_NO_EMPTY,
@@ -267,15 +329,5 @@ class Confidence
         }
 
         return $pieces;
-    }
-
-    /**
-     * @param  array<int, \Iliaal\NameParser\Part\AbstractPart|string>  $parts
-     * @param  array<int|string, string>|null  $suffixes
-     * @return array<int, \Iliaal\NameParser\Part\AbstractPart|string>
-     */
-    private static function mapPartDecorations(array $parts, ?array $suffixes): array
-    {
-        return (new SuffixMapper($suffixes ?? English::SUFFIXES, true, 0))->map($parts);
     }
 }

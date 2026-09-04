@@ -25,6 +25,16 @@ class LastnameMapper extends AbstractMapper
         protected bool $surnameOnly = false,
     ) {}
 
+    public function matchesSinglePart(): bool
+    {
+        return $this->matchSinglePart;
+    }
+
+    public function isSurnameOnly(): bool
+    {
+        return $this->surnameOnly;
+    }
+
     /**
      * @param  PartArray  $parts
      * @return PartArray

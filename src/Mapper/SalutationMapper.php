@@ -68,6 +68,25 @@ class SalutationMapper extends AbstractMapper
     private array $multiWordStarts = [];
 
     /**
+     * Multi-word patterns indexed by first key, longest first, so matchAt()
+     * only tries patterns that can open at the current token instead of
+     * scanning every pattern per token.
+     *
+     * @var array<string, list<array{array<int, string>, string}>>
+     */
+    private array $multiWordByFirst = [];
+
+    /**
+     * Lazily-built decoration-analyzer pair for analyzeRemainder() (shared
+     * factory construction); built once per mapper instance instead of two
+     * throwaway mappers per call. The inputs are constructor-fixed, so the
+     * pair never goes stale.
+     *
+     * @var array{suffix: SuffixMapper, nickname: NicknameMapper}|null
+     */
+    private ?array $analyzerPair = null;
+
+    /**
      * @param  array<int|string, string>  $salutations
      * @param  bool  $requireRemainder  refuse to consume the segment's last
      *                                  token, for segments the caller has
@@ -101,6 +120,15 @@ class SalutationMapper extends AbstractMapper
             $this->multiWord,
             static fn(array $left, array $right): int => count($right[0]) <=> count($left[0]),
         );
+
+        foreach ($this->multiWord as $pattern) {
+            $this->multiWordByFirst[$pattern[0][0]][] = $pattern;
+        }
+    }
+
+    public function requiresRemainder(): bool
+    {
+        return $this->requireRemainder;
     }
 
     /**
@@ -303,13 +331,7 @@ class SalutationMapper extends AbstractMapper
             return [new Salutation($current, $this->salutations[$currentKey]), 1];
         }
 
-        foreach ($this->multiWord as [$keys, $salutation]) {
-            // a multi-word match requires the first pattern word to key-equal the
-            // current token, so skip the slice+compare when it can't.
-            if ($keys[0] !== $currentKey) {
-                continue;
-            }
-
+        foreach ($this->multiWordByFirst[$currentKey] ?? [] as [$keys, $salutation]) {
             $length = count($keys);
 
             $subset = array_slice($parts, $start, $length);
@@ -335,11 +357,18 @@ class SalutationMapper extends AbstractMapper
         $decorated = array_slice($parts, $start);
 
         if ($this->suffixes !== [] || $this->nicknameDelimiters !== []) {
-            $suffixMapper = new SuffixMapper($this->suffixes, true, 0, $this->nicknameDelimiters);
-            $decorated = $suffixMapper->map($decorated);
-            $decorated = (new NicknameMapper($this->nicknameDelimiters))->map($decorated);
-            $decorated = $suffixMapper->map($decorated);
+            // lazily-reused analyzer pair (shared factory construction): the
+            // same suffix-nickname-suffix order as before, without two
+            // throwaway mappers and a triple map per call
+            $this->analyzerPair ??= self::decorationAnalyzers($this->suffixes, $this->nicknameDelimiters);
+            $decorated = $this->analyzerPair['suffix']->map($decorated);
+            $decorated = $this->analyzerPair['nickname']->map($decorated);
+            $decorated = $this->analyzerPair['suffix']->map($decorated);
         }
+
+        // multi-word match spans precomputed once per call instead of
+        // re-scanning every pattern at every token in isSalutationTokenAt()
+        $multiWordCover = $this->multiWordSpanCover($decorated);
 
         $lastRawNameIndex = -1;
         $lastNamedPersonIndex = -1;
@@ -355,7 +384,7 @@ class SalutationMapper extends AbstractMapper
                 continue;
             }
 
-            if ($this->isSalutationTokenAt($decorated, $index)) {
+            if ($this->isSalutationTokenAt($decorated, $index, $multiWordCover)) {
                 continue;
             }
 
@@ -368,9 +397,45 @@ class SalutationMapper extends AbstractMapper
     }
 
     /**
+     * Indexes of tokens covered by a multi-word salutation match, computed in
+     * one forward pass. Equivalent to the per-token offset loop it replaces:
+     * a token is covered exactly when some pattern matches a span containing
+     * it, and matchAt() finds the same longest-first match the loop would.
+     *
      * @param  PartArray  $parts
+     * @return array<int, true>
      */
-    private function isSalutationTokenAt(array $parts, int $index): bool
+    private function multiWordSpanCover(array $parts): array
+    {
+        if ($this->multiWord === []) {
+            return [];
+        }
+
+        $cover = [];
+        $total = count($parts);
+
+        foreach ($parts as $index => $part) {
+            if (! is_string($part)) {
+                continue;
+            }
+
+            [, $consumed] = $this->matchAt($parts, $index);
+
+            if ($consumed > 1) {
+                for ($k = $index; $k < $index + $consumed && $k < $total; $k++) {
+                    $cover[$k] = true;
+                }
+            }
+        }
+
+        return $cover;
+    }
+
+    /**
+     * @param  PartArray  $parts
+     * @param  array<int, true>|null  $multiWordCover
+     */
+    private function isSalutationTokenAt(array $parts, int $index, ?array $multiWordCover = null): bool
     {
         $current = $parts[$index] ?? null;
         if (! is_string($current)) {
@@ -386,15 +451,21 @@ class SalutationMapper extends AbstractMapper
             return true;
         }
 
-        foreach ($this->multiWord as [$keys]) {
-            for ($offset = 0; $offset < count($keys); $offset++) {
-                $start = $index - $offset;
-                if ($start < 0) {
-                    continue;
-                }
+        if ($multiWordCover !== null) {
+            if (isset($multiWordCover[$index])) {
+                return true;
+            }
+        } else {
+            foreach ($this->multiWord as [$keys]) {
+                for ($offset = 0; $offset < count($keys); $offset++) {
+                    $start = $index - $offset;
+                    if ($start < 0) {
+                        continue;
+                    }
 
-                if ($this->isMatchingSubset($keys, array_slice($parts, $start, count($keys)))) {
-                    return true;
+                    if ($this->isMatchingSubset($keys, array_slice($parts, $start, count($keys)))) {
+                        return true;
+                    }
                 }
             }
         }

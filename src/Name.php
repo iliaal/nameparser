@@ -3,14 +3,39 @@
 namespace Iliaal\NameParser;
 
 use Iliaal\NameParser\Part\AbstractPart;
+use Iliaal\NameParser\Part\Firstname;
+use Iliaal\NameParser\Part\GivenNamePart;
+use Iliaal\NameParser\Part\Initial;
 use Iliaal\NameParser\Part\Lastname;
 use Iliaal\NameParser\Part\LastnamePrefix;
+use Iliaal\NameParser\Part\Middlename;
+use Iliaal\NameParser\Part\Nickname;
 use Iliaal\NameParser\Part\Salutation;
 use Iliaal\NameParser\Part\SalutationConnector;
+use Iliaal\NameParser\Part\Suffix;
 
 class Name
 {
     private const string PARTS_NAMESPACE = 'Iliaal\NameParser\Part';
+
+    /**
+     * Short export/isType names to part classes. Dispatching on ::class keeps
+     * renames and typos visible to static analysis; unknown strings still fall
+     * back to the namespace lookup so custom part types keep working.
+     *
+     * @var array<string, class-string<AbstractPart>>
+     */
+    private const array TYPE_MAP = [
+        'Firstname' => Firstname::class,
+        'GivenNamePart' => GivenNamePart::class,
+        'Initial' => Initial::class,
+        'Lastname' => Lastname::class,
+        'LastnamePrefix' => LastnamePrefix::class,
+        'Middlename' => Middlename::class,
+        'Nickname' => Nickname::class,
+        'Salutation' => Salutation::class,
+        'Suffix' => Suffix::class,
+    ];
 
     /**
      * @var array<int, AbstractPart|string> the parts that make up this name
@@ -39,22 +64,44 @@ class Name
     protected ?array $confidenceTokens = null;
 
     /**
+     * Parser nickname-delimiter configuration, retained so getConfidence()
+     * decorates exactly like the parse did instead of defaulting.
+     *
+     * @var array<string, string>|null
+     */
+    protected ?array $confidenceNicknameDelimiters = null;
+
+    /**
+     * Parser whitespace configuration, retained so getConfidence() splits
+     * exactly like the parse did instead of defaulting.
+     */
+    protected ?string $confidenceWhitespace = null;
+
+    /**
      * constructor takes the array of parts this name consists of
      *
      * raw string parts are retained in getParts() but ignored by every getter
      * and by export(): the getters only ever read AbstractPart instances.
      *
+     * The trailing confidence parameters are all optional and additive: older
+     * call sites constructing with three or fewer arguments are unaffected.
+     *
      * @param  array<int, AbstractPart|string>|null  $parts
      * @param  array<int|string, string>|null  $confidenceSuffixes
      * @param  array<int|string, string>|null  $confidenceSalutations
+     * @param  array<string, string>|null  $confidenceNicknameDelimiters
      */
     public function __construct(
         ?array $parts = null,
         ?array $confidenceSuffixes = null,
         ?array $confidenceSalutations = null,
+        ?array $confidenceNicknameDelimiters = null,
+        ?string $confidenceWhitespace = null,
     ) {
         $this->confidenceSuffixes = $confidenceSuffixes;
         $this->confidenceSalutations = $confidenceSalutations;
+        $this->confidenceNicknameDelimiters = $confidenceNicknameDelimiters;
+        $this->confidenceWhitespace = $confidenceWhitespace;
 
         if ($parts !== null) {
             $this->setParts($parts);
@@ -121,14 +168,62 @@ class Name
     }
 
     /**
+     * record the parser nickname-delimiter configuration, so getConfidence()
+     * decorates exactly like the parse did
+     *
+     * @param  array<string, string>|null  $delimiters
+     * @return $this
+     */
+    public function setConfidenceNicknameDelimiters(?array $delimiters): Name
+    {
+        $this->confidenceNicknameDelimiters = $delimiters;
+
+        return $this;
+    }
+
+    /**
+     * the stored parser nickname-delimiter configuration, or null when none
+     * was recorded (getConfidence() then uses defaults)
+     *
+     * @return array<string, string>|null
+     */
+    public function getConfidenceNicknameDelimiters(): ?array
+    {
+        return $this->confidenceNicknameDelimiters;
+    }
+
+    /**
+     * record the parser whitespace configuration, so getConfidence() splits
+     * exactly like the parse did
+     *
+     * @return $this
+     */
+    public function setConfidenceWhitespace(?string $whitespace): Name
+    {
+        $this->confidenceWhitespace = $whitespace;
+
+        return $this;
+    }
+
+    /**
+     * the stored parser whitespace configuration, or null when none was
+     * recorded (getConfidence() then uses defaults)
+     */
+    public function getConfidenceWhitespace(): ?string
+    {
+        return $this->confidenceWhitespace;
+    }
+
+    /**
      * advisory confidence signal for this parse, derived from the same input
-     * the parser saw; falls back to the reconstructed name when no source was
-     * recorded (e.g. a manually constructed Name). parse() is unaffected: this
-     * is a read-only check the caller opts into.
+     * the parser saw and the same nickname-delimiter/whitespace configuration;
+     * falls back to the reconstructed name with default configuration when
+     * nothing was recorded (e.g. a manually constructed Name). parse() is
+     * unaffected: this is a read-only check the caller opts into.
      *
      * The reconstruction fallback sees normalized casing, so it generally
      * cannot flag uniform-case ambiguity; parse via Parser (which records the
-     * source) when that signal matters.
+     * source and configuration) when that signal matters.
      *
      * @return array{ambiguous: bool, notes: list<string>}
      */
@@ -139,6 +234,8 @@ class Name
             $this->confidenceSuffixes,
             $this->confidenceSalutations,
             $this->confidenceTokens,
+            $this->confidenceNicknameDelimiters,
+            $this->confidenceWhitespace,
         );
     }
 
@@ -174,22 +271,22 @@ class Name
      */
     public function getAll(bool $format = false): array
     {
-        $results = [];
-        $keys = [
-            'salutation' => [],
-            'firstname' => [],
-            'nickname' => [$format],
-            'middlename' => [],
-            'initials' => [],
-            'lastname' => [],
-            'suffix' => [],
+        // static key => first-class-callable map: renames and typos fail at
+        // analysis time instead of at runtime via dynamic method strings
+        $getters = [
+            'salutation' => $this->getSalutation(...),
+            'firstname' => $this->getFirstname(...),
+            'nickname' => fn(): string => $this->getNickname($format),
+            'middlename' => $this->getMiddlename(...),
+            'initials' => $this->getInitials(...),
+            'lastname' => $this->getLastname(...),
+            'suffix' => $this->getSuffix(...),
         ];
 
-        foreach ($keys as $key => $args) {
-            $method = 'get' . ucfirst($key);
-            /** @var callable(): string $callable */
-            $callable = [$this, $method];
-            $value = $callable(...$args);
+        $results = [];
+
+        foreach ($getters as $key => $getter) {
+            $value = $getter();
             if ($value !== '') {
                 $results[$key] = $value;
             }
@@ -278,7 +375,10 @@ class Name
      * ['Mr.', 'Mrs.']. Stacked titles for one person stay together
      * ("Rev. Dr John Doe" gives ['Rev. Dr.']), and a name with no honorific
      * gives an empty list, so read the first entry as `[0] ?? ''`. Joining the
-     * entries with " and " reproduces getSalutation().
+     * entries with " and " reproduces getSalutation() only under the default
+     * English connectors: a custom ConnectorsInterface language renders its
+     * own join word ("Herr und Frau"), so join with the configured rendering
+     * there instead of a hardcoded " and ".
      *
      * @return list<string>
      */
@@ -331,7 +431,23 @@ class Name
             }
         }
 
-        return new Name($parts, $this->confidenceSuffixes, $this->confidenceSalutations);
+        $partner = new Name(
+            $parts,
+            $this->confidenceSuffixes,
+            $this->confidenceSalutations,
+            $this->confidenceNicknameDelimiters,
+            $this->confidenceWhitespace,
+        );
+
+        // the partner derives from the same parse, so it shares the
+        // source-backed confidence input; guarded for manually constructed
+        // Names (no source or tokens recorded), which keep the reconstruction
+        // fallback documented on getConfidence()
+        if ($this->source !== null || $this->confidenceTokens !== null) {
+            $partner->setSource($this->source ?? (string) $this, $this->confidenceTokens);
+        }
+
+        return $partner;
     }
 
     /**
@@ -435,7 +551,7 @@ class Name
      */
     protected function isType(AbstractPart $part, string $type, bool $strict = false): bool
     {
-        $className = self::PARTS_NAMESPACE . '\\' . $type;
+        $className = self::TYPE_MAP[$type] ?? self::PARTS_NAMESPACE . '\\' . $type;
 
         if ($strict) {
             if ($type === 'Lastname') {

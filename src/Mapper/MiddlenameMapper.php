@@ -21,6 +21,11 @@ class MiddlenameMapper extends AbstractMapper
         protected array $prefixes = [],
     ) {}
 
+    public function mapsWithoutLastname(): bool
+    {
+        return $this->mapWithoutLastname;
+    }
+
     /**
      * @param  PartArray  $parts
      * @return PartArray
