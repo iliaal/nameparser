@@ -263,14 +263,16 @@ class Confidence
 
         /** @var list<array<int, \Iliaal\NameParser\Part\AbstractPart|string>> $segments */
         $segments = [[]];
+        $current = 0;
         foreach ($parts as $part) {
             if ($part === ',') {
                 $segments[] = [];
+                $current++;
 
                 continue;
             }
 
-            $segments[array_key_last($segments)][] = $part;
+            $segments[$current][] = $part;
         }
 
         ['suffix' => $suffixMapper] = AbstractMapper::decorationAnalyzers(
