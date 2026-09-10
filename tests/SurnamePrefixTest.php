@@ -6,20 +6,6 @@ use Iliaal\NameParser\Parser;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
-/**
- * Surname-prefix handling in two paths:
- *
- *  1. comma form ("Last, First"): the surname segment is parsed as a pure
- *     surname, so a leading prefix ("van der Berg", "de Vries") stays in the
- *     lastname instead of leaking its first token into the firstname.
- *  2. main pipeline: the Dutch ("van den", "ten") and Spanish ("de los")
- *     multi-particle prefixes resolve token by token onto the lastname.
- *
- * The compound-given-name case ("Maria de los Angeles ...") is locked as a
- * non-regression: mapping stops at the surname before the particles are
- * re-evaluated, so adding los/las does not pull the given name into the
- * lastname.
- */
 class SurnamePrefixTest extends TestCase
 {
     /**
@@ -80,9 +66,6 @@ class SurnamePrefixTest extends TestCase
     }
 
     /**
-     * a particle in a compound given name renders in the same lowercase form as
-     * a surname particle, instead of being title-cased like a plain middle name
-     *
      * @return array<string, array{string, string}>
      */
     public static function middleParticleProvider(): array
@@ -103,10 +86,7 @@ class SurnamePrefixTest extends TestCase
     }
 
     /**
-     * A multi-particle surname with no firstname (bare or salutation-led) keeps
-     * the whole surname instead of leaking the leading particle into the first
-     * name. The discriminator is that the leading particle is followed by another
-     * prefix particle, so it is unambiguously mid-surname.
+     * Adjacent particles resolve surname ambiguity without a firstname.
      *
      * @return array<string, array{string, string, string}>
      */
@@ -132,9 +112,7 @@ class SurnamePrefixTest extends TestCase
     }
 
     /**
-     * A single prefix word with no further particle stays the firstname: it is
-     * genuinely ambiguous (particle vs. given name like "Della"), so the no-
-     * firstname relaxation must not fire and pull it into the lastname.
+     * A lone particle is indistinguishable from a given name such as Della.
      */
     public function testSinglePrefixWordAfterSalutationStaysFirstname(): void
     {
@@ -145,9 +123,6 @@ class SurnamePrefixTest extends TestCase
     }
 
     /**
-     * German particles and contractions, and French articles, resolve under the
-     * default (English) parser without opting into a language class.
-     *
      * @return array<string, array{string, string, string}>
      */
     public static function germanFrenchProvider(): array
@@ -173,12 +148,6 @@ class SurnamePrefixTest extends TestCase
     }
 
     /**
-     * Portuguese/Brazilian contractions (do/dos/das), Filipino joined particles
-     * (dela/delos/delas), and the Italian article (lo) resolve onto the lastname
-     * under the default parser rather than orphaning the particle into the middle
-     * name. "do" collides with the DO credential but casing decides: lowercase is
-     * a particle, ALL-CAPS is the credential (covered separately below).
-     *
      * @return array<string, array{string, string, string}>
      */
     public static function lusoFilipinoItalianProvider(): array
@@ -205,11 +174,6 @@ class SurnamePrefixTest extends TestCase
     }
 
     /**
-     * The new particles double as standalone surnames (Vietnamese Do, Chinese Lo,
-     * Indian Das). With no token after them they must not be consumed as a prefix:
-     * a prefix only binds when followed by a lastname part. The DO credential still
-     * strips because ALL-CAPS reads as a credential, lowercase as a particle.
-     *
      * @return array<string, array{string, string, string, string}>
      */
     public static function standaloneSurnameProvider(): array
@@ -234,9 +198,7 @@ class SurnamePrefixTest extends TestCase
     }
 
     /**
-     * Irish particles bind onto the lastname and keep their capitalised
-     * dictionary form. "Ó" is one grapheme, so InitialMapper would otherwise
-     * claim it as a middle initial and drop the particle from the surname.
+     * Ó is one grapheme but must reach LastnameMapper instead of becoming an initial.
      *
      * @return array<string, array{string, string, string}>
      */
@@ -257,11 +219,8 @@ class SurnamePrefixTest extends TestCase
             'decomposed ni'    => ["Mary Ni\u{0301} Mhaoileoin", 'Mary', 'Ní Mhaoileoin'],
             'decomposed ui'    => ["Bean Ui\u{0301} Bhriain", 'Bean', 'Uí Bhriain'],
 
-            // the dictionary value carries the capital and the fada, so
-            // uniform-caps input still renders the particle correctly
             'uniform uppercase' => ['ÉAMON Ó CUÍV', 'Éamon', 'Ó Cuív'],
 
-            // the apostrophe form is one token and needs no particle at all
             'apostrophe form'  => ["Eamon O'Cuiv", 'Eamon', "O'Cuiv"],
         ];
     }
@@ -276,9 +235,7 @@ class SurnamePrefixTest extends TestCase
     }
 
     /**
-     * Only the fada-bearing "Ó" is a particle. Anglicised bare "O" between two
-     * spaces is indistinguishable from a middle initial ("John F Kennedy"), and
-     * casing is not available as a tie-break here, so it stays an initial.
+     * ASCII O has no fada to distinguish it from an initial.
      */
     public function testAnglicisedOStaysAnInitial(): void
     {
@@ -290,10 +247,7 @@ class SurnamePrefixTest extends TestCase
     }
 
     /**
-     * A two-letter particle written in caps inside mixed-case input reads as
-     * combined initials ("DE" -> D E), which shredded the particle and dropped
-     * it from the surname. Three-letter particles never hit this because they
-     * exceed maxCombinedInitials.
+     * Two-letter particles reach the combined-initial heuristic; longer ones do not.
      *
      * @return array<string, array{string, string, string}>
      */
@@ -307,7 +261,6 @@ class SurnamePrefixTest extends TestCase
             'caps di'   => ['Marco DI Stefano', 'Marco', 'di Stefano'],
             'caps la'   => ['Pierre LA Roche', 'Pierre', 'la Roche'],
 
-            // already worked: three letters exceed the combined-initial limit
             'caps von'  => ['Hans VON Braun', 'Hans', 'von Braun'],
         ];
     }
@@ -349,10 +302,6 @@ class SurnamePrefixTest extends TestCase
     }
 
     /**
-     * The prefix guard must not swallow a genuine initial: no single letter and
-     * no combined pair in the dictionary, so the existing initial handling is
-     * untouched.
-     *
      * @return array<string, array{string, string, string, string}>
      */
     public static function initialProvider(): array
@@ -378,8 +327,6 @@ class SurnamePrefixTest extends TestCase
 
     public function testParticleBindsPastMidNameNickname(): void
     {
-        // the reverse surname scan looks through the nickname, so the particle
-        // still binds to the surname instead of demoting to a middle name
         $name = (new Parser())->parse('John van (Willy) Berg');
 
         $this->assertSame('John', $name->getFirstname());

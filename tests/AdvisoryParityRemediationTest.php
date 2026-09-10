@@ -20,12 +20,8 @@ use Iliaal\NameParser\Text;
 use PHPUnit\Framework\TestCase;
 use ReflectionProperty;
 
-/**
- * Behavior pins for the advisory/parity remediation beads (Phase 1).
- */
 class AdvisoryParityRemediationTest extends TestCase
 {
-    // np-cr-002: prefix opener-presence table keeps the span-tail scan linear
     public function testSuffixSpanTailScanRemainsLinearOnHostileRow(): void
     {
         $tokens = array_fill(0, 20000, 'MD)');
@@ -35,8 +31,7 @@ class AdvisoryParityRemediationTest extends TestCase
         $elapsed = microtime(true) - $start;
 
         $this->assertLessThan(10.0, $elapsed);
-        // every token keys as a suffix and passes the strpbrk prefilter, so
-        // all but the reserved head still map
+        // Suffix-shaped tokens exercise the span prefilter throughout the row.
         $this->assertNotSame([], $mapped);
     }
 
@@ -61,7 +56,6 @@ class AdvisoryParityRemediationTest extends TestCase
         $this->assertNotSame('', $name->getSuffix());
     }
 
-    // np-cr-004: delimiters + whitespace stored on Name and threaded into Confidence
     public function testCustomDelimitersChangeConfidenceVerdict(): void
     {
         $withCustom = Confidence::assess('Lord «Doc» Smith', null, null, null, ['«' => '»']);
@@ -98,7 +92,6 @@ class AdvisoryParityRemediationTest extends TestCase
         $this->assertNull($name->getConfidenceNicknameDelimiters());
     }
 
-    // np-cr-008: resync preserves non-default mapper flags
     public function testResyncPreservesMapperFlags(): void
     {
         $parser = new Parser();
@@ -126,12 +119,9 @@ class AdvisoryParityRemediationTest extends TestCase
         $this->assertTrue($newMiddle->mapsWithoutLastname());
         $this->assertTrue($newSalutation->requiresRemainder());
 
-        // surname-only + single-part flags stay live after the resync: the
-        // whole row maps as the surname and parsing still works
         $this->assertSame('John Smith', $parser->parse('John Smith')->getLastname());
     }
 
-    // np-cr-013: partner shares the source-backed confidence input
     public function testPartnerReportsSourceBackedConfidence(): void
     {
         $name = (new Parser())->parse('Mr. and Mrs. Brad Smith');
@@ -157,7 +147,6 @@ class AdvisoryParityRemediationTest extends TestCase
         $this->assertNull($partner->getSource());
     }
 
-    // np-cr-019: doc pin — default connectors join with " and "
     public function testDefaultJoinReproducesSalutation(): void
     {
         $name = (new Parser())->parse('Mr. and Mrs. Brad Smith');
@@ -165,7 +154,6 @@ class AdvisoryParityRemediationTest extends TestCase
         $this->assertSame($name->getSalutation(), implode(' and ', $name->getSalutations()));
     }
 
-    // np-cr-022: static dispatch map behaves like the old string dispatch
     public function testGetAllMatchesIndividualGetters(): void
     {
         $name = (new Parser())->parse('Mr. John (Bob) Smith Jr');
@@ -180,7 +168,6 @@ class AdvisoryParityRemediationTest extends TestCase
         $this->assertSame($name->getNickname(true), $name->getAll(true)['nickname'] ?? null);
     }
 
-    // np-cr-023: centralized reset + shared factory (minimal path)
     public function testUniformUpperOverridesResetCentrally(): void
     {
         $suffix = new SuffixMapper(['md' => 'MD'], false, 2);
@@ -215,7 +202,6 @@ class AdvisoryParityRemediationTest extends TestCase
         );
     }
 
-    // np-cr-027: Text-routed case gates; digit-only and caseless tokens stay names
     public function testDigitOnlyTokenStaysAName(): void
     {
         $mapped = (new InitialMapper())->map(['123', 'Smith']);
@@ -255,7 +241,6 @@ class AdvisoryParityRemediationTest extends TestCase
         $this->assertTrue(Text::isUniformUpperTokens(['123', 'AB']));
     }
 
-    // np-o-01: single-pass name-bearing segment scan
     public function testHostileConfidenceRemainsLinear(): void
     {
         $input = 'Lord John, ' . rtrim(str_repeat('MD,', 20000), ',');
@@ -270,12 +255,9 @@ class AdvisoryParityRemediationTest extends TestCase
 
     public function testDecidingCommaStillDetectedInSinglePass(): void
     {
-        // both comma segments carry names, so the comma decides and no
-        // salutation-collision note is emitted
         $this->assertFalse(Confidence::assess('Lord, Jane')['ambiguous']);
     }
 
-    // np-o-05: lazily-reused analyzer pair + indexed multi-word patterns
     public function testSalutationRemainderAnalysisIsReusable(): void
     {
         $mapper = new SalutationMapper(

@@ -24,18 +24,8 @@ use Iliaal\NameParser\SegmentParserFactory;
 use Iliaal\NameParser\StructuralCommaSplitter;
 use PHPUnit\Framework\TestCase;
 
-/**
- * structural remediation pins (np-cr-024, np-cr-026): the Part taxonomy keeps
- * every class name importable with its instanceof lattice intact, the partner
- * keeps clone (not shared-reference) semantics, and the three Parser
- * extractions route identically to the inline code they replace.
- */
 class StructuralRemediationTest extends TestCase
 {
-    /**
-     * the partner's parts are clones: no object is shared with the source
-     * name, so writing through one side cannot reach the other
-     */
     public function testPartnerPartsAreClones(): void
     {
         $name = (new Parser())->parse('Mr. and Mrs. Brad Smith');
@@ -55,9 +45,6 @@ class StructuralRemediationTest extends TestCase
         }
     }
 
-    /**
-     * the partner derives from the same parse, so it shares the source
-     */
     public function testPartnerSharesSource(): void
     {
         $name = (new Parser())->parse('Mr. and Mrs. Brad Smith');
@@ -67,10 +54,6 @@ class StructuralRemediationTest extends TestCase
         $this->assertSame($name->getSource(), $partner->getSource());
     }
 
-    /**
-     * np-cr-024: every Part class stays importable and keeps its instanceof
-     * lineage, so external instanceof checks survive the taxonomy cleanup
-     */
     public function testPartTaxonomyLattice(): void
     {
         $this->assertInstanceOf(GivenNamePart::class, new Firstname('John'));
@@ -95,11 +78,6 @@ class StructuralRemediationTest extends TestCase
         $this->assertNotInstanceOf(PreNormalizedPart::class, new Ignored('and'));
     }
 
-    /**
-     * np-cr-024: one pre-normalized mechanism — the dictionary form fixed at
-     * map time renders verbatim, for the base-class line and the
-     * trait-direct particle prefixes alike
-     */
     public function testPreNormalizedRendersDictionaryForm(): void
     {
         $this->assertSame('van', (new LastnamePrefix('VAN', 'van'))->normalize());
@@ -108,9 +86,6 @@ class StructuralRemediationTest extends TestCase
         $this->assertSame('PhD', (new Suffix('PHD', 'PhD'))->normalize());
     }
 
-    /**
-     * np-cr-024: camelcased parts still derive their rendering at render time
-     */
     public function testCamelcasedPartsNormalize(): void
     {
         $this->assertSame('John', (new Firstname('john'))->normalize());
@@ -119,10 +94,6 @@ class StructuralRemediationTest extends TestCase
         $this->assertSame('and', (new Ignored('and'))->normalize());
     }
 
-    /**
-     * np-cr-026: the splitter shields nickname commas and bisects the rest,
-     * exactly as the inline Parser code did
-     */
     public function testStructuralSplitterEquivalence(): void
     {
         $this->assertSame(['a', ' b'], StructuralCommaSplitter::split('a, b', []));
@@ -134,11 +105,6 @@ class StructuralRemediationTest extends TestCase
         $this->assertSame('a, b', StructuralCommaSplitter::mask('a, b', []));
     }
 
-    /**
-     * np-cr-026: comma routing through the extracted collaborators parses as
-     * before — nickname commas stay structural-shielded, credential tails
-     * classify, surname-first still peels
-     */
     public function testCommaRoutingEquivalence(): void
     {
         $parser = new Parser();
@@ -162,10 +128,6 @@ class StructuralRemediationTest extends TestCase
         $this->assertSame('Zedong', $surnameFirst->getFirstname());
     }
 
-    /**
-     * np-cr-026: the factory builds the stock pipeline Parser used inline —
-     * a factory-built parser parses identically to the default one
-     */
     public function testSegmentFactoryBuildsWorkingPipeline(): void
     {
         $parser = new Parser();
@@ -186,10 +148,6 @@ class StructuralRemediationTest extends TestCase
         $this->assertSame((string) (new Parser())->parse('John Robert Smith'), (string) $direct);
     }
 
-    /**
-     * np-cr-026: the tail classifier answers through its wired dependencies
-     * (live dictionary, memoized candidate test, mapper ride)
-     */
     public function testCredentialTailClassifier(): void
     {
         $parser = new Parser();
@@ -207,9 +165,6 @@ class StructuralRemediationTest extends TestCase
         $this->assertInstanceOf(Suffix::class, $credited[0]);
     }
 
-    /**
-     * a manually constructed joint Name still yields an independent partner
-     */
     public function testManualNamePartnerIsIndependent(): void
     {
         $manual = new Name([

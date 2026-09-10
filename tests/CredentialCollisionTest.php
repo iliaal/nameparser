@@ -6,13 +6,6 @@ use Iliaal\NameParser\Parser;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
-/**
- * Locks the fork's casing- and credential-aware behavior:
- *  - trailing professional credentials are stripped to the suffix, keeping the
- *    real surname (upstream lost it);
- *  - name tokens that collide with a credential (Vietnamese "Do"/"Vi", "Ma",
- *    roman numerals) are kept as names when their casing is not ALL-CAPS.
- */
 class CredentialCollisionTest extends TestCase
 {
     /**
@@ -47,7 +40,6 @@ class CredentialCollisionTest extends TestCase
             'first + Jr without lastname'         => ['John Jr', 'John', '', 'Jr'],
             'first + roman without lastname'      => ['John III', 'John', '', 'III'],
 
-            // name/credential collisions — must stay names, no suffix
             'surname Do, two tokens'              => ['Anh Do', 'Anh', 'Do', ''],
             'surname Do, comma'                   => ['Do, Anh', 'Anh', 'Do', ''],
             'surname Do, three tokens'            => ['Anh Tran Do', 'Anh', 'Tran Do', ''],
@@ -58,36 +50,26 @@ class CredentialCollisionTest extends TestCase
             'surname Ma, comma'                   => ['Ma, Wei', 'Wei', 'Ma', ''],
             'surname Ma, two tokens'              => ['Wei Ma', 'Wei', 'Ma', ''],
 
-            // a bare single-letter roman numeral after the first name is a
-            // surname/initial, not a suffix ("Malcolm X")
             'single-letter X stays lastname'      => ['Malcolm X', 'Malcolm', 'X', ''],
             'single-letter V stays lastname'      => ['John V', 'John', 'V', ''],
             'single-letter I stays lastname'      => ['Mary I', 'Mary', 'I', ''],
 
-            // Census surnames colliding with roman-numeral / MBA suffixes
             'surname Ii in comma segment'         => ['Brown, Ii', 'Ii', 'Brown', ''],
             'surname Iv in comma segment'         => ['Brown, Iv', 'Iv', 'Brown', ''],
             'surname Mba, three tokens'           => ['John Adam Mba', 'John', 'Mba', ''],
-            // uppercase roman numeral is still a credential, not a name
             'uppercase II is a suffix'            => ['John Smith II', 'John', 'Smith', 'II'],
 
-            // nursing / allied-health credentials (NPI-derived)
             'comma RN'                            => ['Jane Doe, RN', 'Jane', 'Doe', 'RN'],
             'comma PharmD'                        => ['Donna Barrett, PHARMD', 'Donna', 'Barrett', 'PharmD'],
             'comma APRN'                          => ['Karen Hill, APRN', 'Karen', 'Hill', 'APRN'],
             'space PA-C'                          => ['Tom White PA-C', 'Tom', 'White', 'PA-C'],
             'comma FNP-C'                         => ['Robert Smith, FNP-C', 'Robert', 'Smith', 'FNP-C'],
             'comma OTR/L'                         => ['Amy Lee, OTR/L', 'Amy', 'Lee', 'OTR/L'],
-            // surnames colliding with short creds stay names (casing-gated)
             'surname Ba in comma segment'         => ['Brown, Ba', 'Ba', 'Brown', ''],
             'surname Lac in comma segment'        => ['Brown, Lac', 'Lac', 'Brown', ''],
             'surname Ba, two tokens'              => ['Wei Ba', 'Wei', 'Ba', ''],
-            // uppercase BA is the degree, not a name
             'uppercase BA is a suffix'            => ['Jane Doe, BA', 'Jane', 'Doe', 'BA'],
 
-            // uniform-uppercase input: a two-letter given name must not be
-            // shredded into initials ("JO" -> J O). Casing carries no signal, so
-            // the token is kept as a name rather than split.
             'all-caps two-letter given'           => ['JO ANDERSON', 'Jo', 'Anderson', ''],
             'all-caps given Bo'                   => ['BO JACKSON', 'Bo', 'Jackson', ''],
             'all-caps given Vi stays a name'      => ['VI NGUYEN', 'Vi', 'Nguyen', ''],
@@ -96,13 +78,9 @@ class CredentialCollisionTest extends TestCase
             'all-caps two-letter given with salutation' => ['Dr. JO ANDERSON', 'Jo', 'Anderson', ''],
             'all-caps DO strips as suffix'        => ['ANH TRAN DO', 'Anh', 'Tran', 'DO'],
 
-            // legal credential
             'comma JD'                            => ['King, Michelle JD', 'Michelle', 'King', 'JD'],
             'comma JD and LPC'                    => ['King, Michelle JD, LPC', 'Michelle', 'King', 'JD LPC'],
 
-            // a comma tail of unknown all-caps credentials, where the left side
-            // already carries a given name, is a credential run and not the
-            // given name of a two-token surname
             'comma unknown credential'            => ['Christina Nemec, LMHP', 'Christina', 'Nemec', 'LMHP'],
             'comma unknown credential, arbitrary' => ['John Smith, XYZ', 'John', 'Smith', 'XYZ'],
             'comma unknown credential, salutation' => ['Mrs. Natalie Sutton, RDH', 'Natalie', 'Sutton', 'RDH'],
@@ -111,22 +89,14 @@ class CredentialCollisionTest extends TestCase
             'comma spaced credential remainder'   => ['Lori Shelley, PHARM D', 'Lori', 'Shelley', 'PHARM D'],
             'comma credential with registration'  => ['Leon Ellerb, OTA/L 2838', 'Leon', 'Ellerb', 'OTA/L 2838'],
 
-            // ... but a surname-only left side keeps the ordinary comma
-            // reading, so the tail is still the given name
             'comma given name stays given, caps'  => ['Smith, JOHN, MD', 'John', 'Smith', 'MD'],
             'comma given name stays given'        => ['Hidalgo Castillo, Maria', 'Maria', 'Hidalgo Castillo', ''],
             'comma name-colliding cred stays'     => ['Nguyen, VI', '', 'Nguyen', 'VI'],
-            // a tail of nothing but riders never promotes: "P" stays an initial
-            // under the ordinary comma reading rather than becoming a credential
             'comma lone initial is not a cred'    => ['Samuel Assam, P', '', 'Samuel Assam', ''],
 
-            // a dictionary credential written in a non-canonical case still
-            // renders canonically through this path
             'comma non-canonical known credential' => ['Donna Barrett, PHARMD', 'Donna', 'Barrett', 'PharmD'],
             'comma punctuated known credential'   => ['George Nasser, M.D.', 'George', 'Nasser', 'MD'],
 
-            // uniform-case input carries no casing signal, so the comma reading
-            // is left alone
             'uniform caps comma tail'             => ['NEMEC, CHRISTINA', 'Christina', 'Nemec', ''],
         ];
     }
@@ -210,10 +180,7 @@ class CredentialCollisionTest extends TestCase
     }
 
     /**
-     * An unknown all-caps credential ("FACS", "CCRN") next to a real dictionary
-     * credential no longer breaks the tail scan: the whole run is stripped to
-     * the suffix, leaving no phantom initials or middle name. The casing is the
-     * signal, so this only fires when the input is not uniform-uppercase.
+     * Unknown credentials need a dictionary anchor and nonuniform input casing.
      *
      * @return array<string, array{string, string, string, string, string, string}>
      */
@@ -226,8 +193,6 @@ class CredentialCollisionTest extends TestCase
             'comma unknown after known'        => ['Garcia, Maria, MD, FACS', 'Maria', '', 'Garcia', '', 'MD FACS'],
             'comma credential-only unknown run' => ['John Smith, MD, FACS', 'John', '', 'Smith', '', 'MD FACS'],
             'comma credential-only space run' => ['John Smith, MD FACS', 'John', '', 'Smith', '', 'MD FACS'],
-            // the phantom-initials bug: a credential-only segment before the
-            // given name no longer leaks into the initials field
             'comma credential before given'    => ['Smith, MD, John', 'John', '', 'Smith', '', 'MD'],
             'comma ambiguous credential keeps middle' => ['Smith, John, DO, Robert', 'John', 'Robert', 'Smith', '', 'DO'],
             'leading credential run in given'  => ['Smith, MD John', 'John', '', 'Smith', '', 'MD'],
@@ -271,8 +236,6 @@ class CredentialCollisionTest extends TestCase
                 '',
                 'MD FACS RN',
             ],
-            // combined initials behind a preserved name token are not a
-            // stray credential; only the contiguous tail run qualifies
             'all-caps initials behind a name token stay initials' => ['John Paul JM Smith MD', 'John', 'Paul', 'Smith', 'J M', 'MD'],
         ];
     }
@@ -296,13 +259,7 @@ class CredentialCollisionTest extends TestCase
     }
 
     /**
-     * Boundary cases where the unknown-credential heuristic deliberately does
-     * NOT fire, locked to their current output so the conservative behavior is
-     * intentional, not accidental:
-     *  - uniform-uppercase input carries no casing signal, so an unknown token
-     *    breaks the scan exactly as before;
-     *  - an unknown credential with no dictionary credential to anchor it is
-     *    left untouched (it becomes a surname), a documented limitation.
+     * Uniform-uppercase input and missing anchors suppress unknown-credential stripping.
      *
      * @return array<string, array{string, string, string, string, string}>
      */
@@ -332,10 +289,6 @@ class CredentialCollisionTest extends TestCase
         $this->assertSame($suffix, $name->getSuffix(), "suffix for '$input'");
     }
 
-    /**
-     * an all-caps "MS" next to another credential reads as a credential, not the
-     * "Ms." salutation
-     */
     public function testAllCapsAmbiguousCredentialIsNotSalutation(): void
     {
         $name = (new Parser())->parse('Doe, MS RN');
@@ -345,9 +298,6 @@ class CredentialCollisionTest extends TestCase
         $this->assertSame('Doe', $name->getLastname());
     }
 
-    /**
-     * title-case "Ms" before a given name is still the salutation
-     */
     public function testTitleCaseSalutationBeforeGivenNamePreserved(): void
     {
         $name = (new Parser())->parse('Smith, Ms John');
@@ -393,11 +343,6 @@ class CredentialCollisionTest extends TestCase
         ];
     }
 
-    /**
-     * a connector inside the trailing credential run is wrapped Ignored by the
-     * salutation pass; the suffix scan and the surname binding must both look
-     * through it instead of losing the surname and shredding the credential
-     */
     #[DataProvider('connectorInCredentialRunProvider')]
     public function testConnectorInsideCredentialRunKeepsSurnameAndSuffix(
         string $input,
@@ -424,11 +369,6 @@ class CredentialCollisionTest extends TestCase
         ];
     }
 
-    /**
-     * a single letter after a real given name in a comma given segment is a
-     * middle initial (registry LAST, FIRST MI form), not a roman-numeral
-     * suffix; the surname-side generational form ("Doe III, John") still maps
-     */
     #[DataProvider('commaFormSingleLetterInitialProvider')]
     public function testCommaFormSingleLetterStaysInitial(
         string $input,
@@ -454,8 +394,6 @@ class CredentialCollisionTest extends TestCase
 
     public function testMaGuardHoldsThroughNickname(): void
     {
-        // the bare-MA-after-single-initial guard must look through a nickname,
-        // extracted or still a raw "(Bob)" span token
         $name = (new Parser())->parse('John A (Bob) MA');
 
         $this->assertSame('John', $name->getFirstname());

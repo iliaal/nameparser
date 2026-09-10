@@ -8,12 +8,6 @@ use Iliaal\NameParser\Part\Lastname;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
-/**
- * A connector joining two titles belongs to the honorific, not to the given
- * name ("Mr. and Mrs. Brad Smith" keeps Brad as the first name). It needs a
- * title on both sides, so a stray "and" is never absorbed, and Name::isJoint()
- * reports the rows that cover two people.
- */
 class JointSalutationTest extends TestCase
 {
     /**
@@ -24,18 +18,15 @@ class JointSalutationTest extends TestCase
         return [
             // input, expected salutation, expected first, expected last
 
-            // the reported forms
             'and spelled out'     => ['Mr. and Mrs. Brad Smith', 'Mr. and Mrs.', 'Brad', 'Smith'],
             'ampersand'           => ['Mr. & Mrs. Brad Smith', 'Mr. and Mrs.', 'Brad', 'Smith'],
             'no periods'          => ['Mr and Mrs Brad Smith', 'Mr. and Mrs.', 'Brad', 'Smith'],
             'surname only'        => ['Mr. and Mrs. Smith', 'Mr. and Mrs.', '', 'Smith'],
 
-            // the connector normalizes, so both spellings land on one value
             'uppercase input'     => ['MR. AND MRS. BRAD SMITH', 'Mr. and Mrs.', 'Brad', 'Smith'],
             'lowercase input'     => ['mr. and mrs. brad smith', 'Mr. and Mrs.', 'Brad', 'Smith'],
             'title case and'      => ['Mr. And Mrs. Brad Smith', 'Mr. and Mrs.', 'Brad', 'Smith'],
 
-            // any pairing of titles, not just Mr/Mrs
             'two Ms'              => ['Ms. & Ms. Jane Doe', 'Ms. and Ms.', 'Jane', 'Doe'],
             'two Mr'              => ['Mr. and Mr. John Smith', 'Mr. and Mr.', 'John', 'Smith'],
             'two Dr, no first'    => ['Dr. & Dr. Chen', 'Dr. and Dr.', '', 'Chen'],
@@ -45,7 +36,6 @@ class JointSalutationTest extends TestCase
             'second colliding surname' => ['Mr. and Mrs. Pastor', 'Mr. and Mrs.', '', 'Pastor'],
             'colliding surname after multi-word title' => ['Mr. and Rt Hon Lord', 'Mr. and Rt Hon.', '', 'Lord'],
 
-            // composes with the rest of the pipeline
             'with initial'        => ['Mr. and Mrs. Brad J. Smith', 'Mr. and Mrs.', 'Brad', 'Smith'],
             'with suffix'         => ['Mr. and Mrs. Brad Smith Jr', 'Mr. and Mrs.', 'Brad', 'Smith'],
             'with credential'     => ['Mr. & Mrs. John Smith, MD', 'Mr. and Mrs.', 'John', 'Smith'],
@@ -53,25 +43,17 @@ class JointSalutationTest extends TestCase
             'comma form'          => ['Mr. and Mrs. Smith, Brad', 'Mr. and Mrs.', 'Brad', 'Smith'],
             'comma stacked titles' => ['Doe, Rev. Dr. John', 'Rev. Dr.', 'John', 'Doe'],
 
-            // a connector needs a title on both sides to join the honorific.
-            // Unjoined, it still belongs to nobody, so it is dropped from the
-            // getters rather than title-cased into a name ("And").
             'no title after'      => ['Mr. and Brad Smith', 'Mr.', 'Brad', 'Smith'],
             'no title before'     => ['Brad and Smith', '', 'Brad', 'Smith'],
             'doubled connector'   => ['Mr. and and Mrs. Smith', 'Mr.', '', 'Smith'],
 
-            // real names are matched whole, so these never come close
             'surname Anderson'    => ['Anderson, Andrea', '', 'Andrea', 'Anderson'],
             'given Andre'         => ['Andre Smith', '', 'Andre', 'Smith'],
             'surname Andrews'     => ['Amanda Andrews', '', 'Amanda', 'Andrews'],
 
-            // single titles are untouched
             'single title'        => ['Mr. Brad Smith', 'Mr.', 'Brad', 'Smith'],
             'stacked titles'      => ['Rev. Dr John Doe', 'Rev. Dr.', 'John', 'Doe'],
-            // Without a named person the connector never joins, so only the
-            // leading title resolves. The trailing "Mrs." addresses a second
-            // person nobody named, so it is not this person's surname either and
-            // "Mr. and Mrs." yields no name at all.
+            // Without a named person, the trailing title remains unattributed.
             'title-only joint'    => ['Mr. and Mrs.', 'Mr.', '', ''],
             'title and credential only' => ['Smith, Mr. and Mrs. MD', 'Mr.', '', 'Smith'],
             'title and nickname only' => ['Smith, Mr. and Mrs. (Bob)', 'Mr.', '', 'Smith'],
@@ -89,11 +71,7 @@ class JointSalutationTest extends TestCase
     }
 
     /**
-     * A conjunction the honorific could not absorb belongs to nobody, so it is
-     * kept out of every getter instead of being title-cased into a name. Same
-     * for a title that directly follows one: it addresses a second person, not
-     * the person named here. The given name beside that title is left where it
-     * lands, since identifying the second person is a separate question.
+     * The second given name stays where it lands; ignoring a title does not identify its owner.
      *
      * @param  array<string, string>  $expected
      */
@@ -111,8 +89,6 @@ class JointSalutationTest extends TestCase
     public static function unattributedProvider(): array
     {
         return [
-            // two named people sharing a surname: the conjunction and the second
-            // title go, the second given name stays as a middle name
             'two givens with titles' => ['Mr. Andrew and Mrs Sally Smith', [
                 'salutation' => 'Mr.', 'firstname' => 'Andrew',
                 'middlename' => 'Sally', 'lastname' => 'Smith',
@@ -137,10 +113,6 @@ class JointSalutationTest extends TestCase
         ];
     }
 
-    /**
-     * the raw text is marked Ignored rather than dropped, so a caller that wants
-     * the household structure can still recover it from getParts()
-     */
     public function testIgnoredTokensStayVisibleInGetParts(): void
     {
         $name = (new Parser())->parse('Mr. Andrew and Mrs Sally Smith');
@@ -171,12 +143,6 @@ class JointSalutationTest extends TestCase
         $this->assertSame(['and', 'His', 'Honour'], $ignored);
     }
 
-    /**
-     * Several salutation keys double as credentials ("ms" is both Ms. and MS),
-     * and SalutationMapper runs before SuffixMapper in the single-segment
-     * pipeline. Only a title introduced by a conjunction is dropped, so a
-     * trailing credential is untouched.
-     */
     #[DataProvider('credentialCollisionProvider')]
     public function testTitleShapedCredentialIsNotDropped(string $input, string $suffix): void
     {
@@ -199,10 +165,6 @@ class JointSalutationTest extends TestCase
         ];
     }
 
-    /**
-     * a title that is also a real personal name keeps its name reading, so the
-     * NAME_COLLIDING_KEYS carve-out is not undone by the conjunction rule
-     */
     public function testNameCollidingTitleAfterConnectorStaysAName(): void
     {
         $name = (new Parser())->parse('John Lord Smith Jr');
@@ -213,9 +175,6 @@ class JointSalutationTest extends TestCase
         $this->assertSame('Jr', $name->getSuffix());
     }
 
-    /**
-     * the connector must not leak into the name getters it used to pollute
-     */
     public function testConnectorLeavesTheNameGettersClean(): void
     {
         $name = (new Parser())->parse('Mr. and Mrs. Brad Smith');
@@ -248,10 +207,6 @@ class JointSalutationTest extends TestCase
     }
 
     /**
-     * Three titles with a real name all join one honorific (the connector
-     * rule is not limited to pairs): the salutation carries every title,
-     * the row reports joint, and the name lands on the shared surname.
-     *
      * @return array<string, array{string, string, string, string}>
      */
     public static function threeTitleProvider(): array
@@ -291,10 +246,6 @@ class JointSalutationTest extends TestCase
     }
 
     /**
-     * the honorific splits into one entry per person addressed, so a caller with
-     * a single prefix field per contact can take the first and derive the
-     * partner from the second
-     *
      * @param  list<string>  $expected
      */
     #[DataProvider('salutationsProvider')]
@@ -304,7 +255,6 @@ class JointSalutationTest extends TestCase
 
         $this->assertSame($expected, $name->getSalutations(), "getSalutations for '$input'");
 
-        // the entries recompose into the rendered honorific
         $this->assertSame($name->getSalutation(), implode(' and ', $expected), "recomposition for '$input'");
     }
 
@@ -323,12 +273,10 @@ class JointSalutationTest extends TestCase
             'comma form'       => ['Mr. and Mrs. Smith, Brad', ['Mr.', 'Mrs.']],
             'surname only'     => ['Mr. and Mrs. Smith', ['Mr.', 'Mrs.']],
 
-            // stacked titles address one person, so they stay in one entry
             'stacked titles'   => ['Rev. Dr John Doe', ['Rev. Dr.']],
             'stacked and joint' => ['Rev. Dr. and Mrs. John Doe', ['Rev. Dr.', 'Mrs.']],
 
             'single title'     => ['Mr. Brad Smith', ['Mr.']],
-            // the leading article is not retained by the mapper
             'article led'      => ['The Rev. Mark Williams', ['Rev.']],
             'no honorific'     => ['Brad Smith', []],
             'unabsorbed and'   => ['Mr. and Brad Smith', ['Mr.']],
@@ -336,8 +284,7 @@ class JointSalutationTest extends TestCase
     }
 
     /**
-     * the shape the reported CiviCRM import needs: one prefix for the named
-     * contact, the partner assembled from the second title and the surname
+     * CiviCRM imports need a separate prefix and surname for each contact.
      */
     public function testSalutationsDrivePerContactMapping(): void
     {
@@ -349,11 +296,6 @@ class JointSalutationTest extends TestCase
         $this->assertSame('Mrs. Smith', $salutations[1] . ' ' . $name->getLastname());
     }
 
-    /**
-     * the second addressee comes back as a Name carrying her title and the
-     * shared surname, so the caller renders "Mrs. Smith" or "Mrs. Brad Smith"
-     * to its own taste
-     */
     #[DataProvider('partnerProvider')]
     public function testGetPartner(string $input, ?string $salutation, ?string $lastname): void
     {
@@ -386,11 +328,8 @@ class JointSalutationTest extends TestCase
             'comma form'         => ['Mr. and Mrs. Smith, Brad', 'Mrs.', 'Smith'],
             'surname only'       => ['Mr. and Mrs. Smith', 'Mrs.', 'Smith'],
 
-            // the particle belongs to the shared surname
             'prefix surname'     => ['Mr. and Mrs. van der Berg', 'Mrs.', 'van der Berg'],
 
-            // a stacked honorific addresses the first person, so only the
-            // second group crosses over
             'stacked and joint'  => ['Rev. Dr. and Mrs. John Doe', 'Mrs.', 'Doe'],
 
             'single title'       => ['Mr. Brad Smith', null, null],
@@ -402,10 +341,6 @@ class JointSalutationTest extends TestCase
         ];
     }
 
-    /**
-     * the given name and any credential belong to the person actually named,
-     * so neither follows the partner
-     */
     public function testPartnerCarriesNoGivenNameOrSuffix(): void
     {
         $partner = (new Parser())->parse('Mr. and Mrs. Brad J. Smith Jr')->getPartner();
@@ -419,10 +354,6 @@ class JointSalutationTest extends TestCase
         $this->assertSame('Mrs. Smith', (string) $partner);
     }
 
-    /**
-     * the partner is one person, so she carries a single-entry salutation list
-     * and no connector of her own
-     */
     public function testPartnerIsNotItselfJoint(): void
     {
         $partner = (new Parser())->parse('Mr. and Mrs. Brad Smith')->getPartner();
@@ -433,10 +364,6 @@ class JointSalutationTest extends TestCase
         $this->assertNull($partner->getPartner());
     }
 
-    /**
-     * parts are cloned into the partner, so writing through one Name cannot
-     * reach into the other
-     */
     public function testPartnerDoesNotShareMutablePartsWithTheSource(): void
     {
         $name = (new Parser())->parse('Mr. and Mrs. Brad Smith');
@@ -469,7 +396,7 @@ class JointSalutationTest extends TestCase
             'single title'      => ['Mr. Brad Smith', false],
             'no title'          => ['Brad Smith', false],
             'unabsorbed and'    => ['Mr. and Brad Smith', false],
-            // no honorific to anchor the connector, so this stays undetected
+            // No honorific anchors the connector, so this remains undetected.
             'bare two givens'   => ['Brad and Jane Smith', false],
             'credential-only remainder' => ['Mr. and Mrs. MD', false],
             'nickname-only remainder' => ['Mr. and Mrs. (Bob)', false],
@@ -487,10 +414,6 @@ class JointSalutationTest extends TestCase
         ];
     }
 
-    /**
-     * a trailing unabsorbed connector is Ignored; the surname scan must look
-     * through it instead of losing the lastname entirely
-     */
     #[DataProvider('trailingConnectorProvider')]
     public function testTrailingConnectorDoesNotBlockSurname(string $input, string $first): void
     {
@@ -512,8 +435,6 @@ class JointSalutationTest extends TestCase
 
     public function testNicknameBetweenConnectorAndTitleStaysTransparent(): void
     {
-        // the unattributed-title rule must look through the nickname; "Mrs."
-        // is still nobody's given name
         $name = (new Parser())->parse('Mr. and (Bob) Mrs. Smith');
 
         $this->assertSame('Mr.', $name->getSalutation());

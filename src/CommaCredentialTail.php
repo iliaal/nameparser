@@ -6,18 +6,6 @@ use Iliaal\NameParser\Mapper\SuffixMapper;
 use Iliaal\NameParser\Part\AbstractPart;
 use Iliaal\NameParser\Part\Suffix;
 
-/**
- * comma-tail credential classification for Parser (np-cr-026): deciding which
- * post-first-comma segments are credentials (dictionary suffixes under the
- * casing rule, or all-caps unknown-credential candidates riding a dictionary
- * anchor) and which fold back into the given name as plain tokens.
- *
- * The algorithm is Parser's, moved verbatim; the state it needs comes in
- * through the constructor (the live suffix dictionary, the per-parse
- * memoized unknown-candidate test, and the second-segment suffix-mapper
- * ride), so the class owns the scan while Parser keeps its memo fields,
- * sub-parser wiring, and protected hooks.
- */
 final class CommaCredentialTail
 {
     /**
@@ -78,24 +66,17 @@ final class CommaCredentialTail
             }
 
             if (! self::isCredentialOnlySegment($tokenClasses)) {
-                // a pure name segment ends any pure post-anchor run; leftover
-                // peels without a following dictionary segment stay names
+                // A name segment ends the credential run; unanchored candidates stay names.
                 array_push($parts, ...self::flattenCandidateRuns($pendingCandidateRuns, false));
                 $pendingCandidateRuns = [];
 
-                // same-segment dictionary suffix anchors unknown candidates on
-                // this segment ("John MD FACS") and subsequent pure candidate
-                // segments ("John MD, FACS"). Hand the whole segment to the
-                // suffix mapper so the ride policy matches space form.
+                // Use the suffix mapper so mixed segments follow the space-form policy.
                 if ($hasDictionarySuffix) {
                     foreach (($this->mapSuffixes)(array_column($tokenClasses, 0), $uniformInput) as $part) {
                         $parts[] = $part;
                     }
 
-                    // the anchor reaches the next segment only when the
-                    // credential run touches this segment's tail; a leading
-                    // run ("MD John") must not promote a name in a following
-                    // segment ("Smith, MD John, PAUL" keeps PAUL)
+                    // Only a tail-ending run anchors the next segment: "MD John, PAUL" keeps PAUL.
                     $tokenClassesCount = count($tokenClasses);
                     $credentialRunAnchored = $tokenClasses[$tokenClassesCount - 1][1] !== TokenCredentialClass::Name;
 
@@ -118,7 +99,6 @@ final class CommaCredentialTail
             }
 
             if ($hasDictionarySuffix) {
-                // mixed-segment trailing peels ride on this dictionary anchor
                 array_push($parts, ...self::flattenCandidateRuns($pendingCandidateRuns, true));
                 $pendingCandidateRuns = [];
                 $credentialRunAnchored = true;
@@ -135,29 +115,17 @@ final class CommaCredentialTail
                     $parts[] = new Suffix($token);
                 }
             } else {
-                // pure unknown-candidate segment with no dictionary anchor yet:
-                // keep as name tokens (not pending). Promoting later would turn
-                // an all-caps given name into a suffix ("Smith, JOHN, MD").
+                // A later anchor must not swallow all-caps given names: "Smith, JOHN, MD".
                 foreach ($tokens as $token) {
                     $parts[] = $token;
                 }
             }
         }
 
-        // trailing peels with no dictionary segment after them stay names
         array_push($parts, ...self::flattenCandidateRuns($pendingCandidateRuns, false));
 
-        // Drop contract, documented (np-cr-014 STOPPED, np-o-04): once ANY tail
-        // segment anchors, Unknown placeholders AND punctuation-only noise drop
-        // from the WHOLE given side, including pure-name segments ('Smith,
-        // Jane, -, MD' loses '-'). Scoping the purge to credential-bearing
-        // segments was implemented and reverted: the existing suite
-        // (CommaSegmentTest::commaCredentialNoiseProvider, 'punctuation
-        // before/after anchor') pins the cross-segment drops, and the suite
-        // wins over the bead. 'John Unknown, MD' still keeps Unknown: the
-        // surname segment never enters this purge (documented otherwise, per
-        // the bead's acceptance). Without an anchor nothing drops
-        // (testCommaTailNoiseWithoutCredentialAnchorIsPreserved).
+        // Any tail anchor drops placeholders and punctuation across the whole
+        // given side. The surname segment is never purged; no anchor means no purge.
         if ($hasCredentialAnchor) {
             $parts = array_values(array_filter(
                 $parts,
@@ -179,12 +147,6 @@ final class CommaCredentialTail
     public function isUnknownTail(array $givenParts): bool
     {
         $hasUnknown = false;
-        // the same per-parse memoized tests as the comma-tail split
-        // (np-r2-04): the candidate definition cannot drift between the
-        // western-route check here and the split scan, and repeated tokens
-        // share one letters() analysis. Text stays canonical underneath the
-        // memoized closures (wired by Parser); direct constructions without
-        // a rider fall back to Text::isCredentialTailRider().
         $isUnknownCandidate = $this->isUnknownCandidate;
         $isCredentialRider = $this->isCredentialRider ?? Text::isCredentialTailRider(...);
 
@@ -202,10 +164,7 @@ final class CommaCredentialTail
             }
 
             if ($isUnknownCandidate($part)) {
-                // a wholly in-dictionary tail is already routed correctly by
-                // the ordinary comma pipeline, which also canonicalizes the
-                // rendering ("PHD" to "PhD"); only an unknown token needs this
-                // path.
+                // Dictionary-only tails use ordinary comma parsing for canonical rendering.
                 if (! array_key_exists(Text::key($part), $this->suffixes)) {
                     $hasUnknown = true;
                 }
@@ -213,11 +172,8 @@ final class CommaCredentialTail
                 continue;
             }
 
-            // a spaced or numbered credential ("PHARM D", "OTA/L 2838") leaves
-            // tokens too short or too digit-heavy to stand as candidates on
-            // their own. They ride along beside a real one; a tail of nothing
-            // but riders never qualifies, so a lone "Assam, P" keeps the comma
-            // reading rather than guessing the initial is a credential.
+            // Short or numeric fragments ("PHARM D", "OTA/L 2838") need a real candidate;
+            // riders alone must not turn "Assam, P" into a credential tail.
             if ($isCredentialRider($part)) {
                 continue;
             }
@@ -257,9 +213,6 @@ final class CommaCredentialTail
     }
 
     /**
-     * classify one segment's tokens, reporting the per-token classes and
-     * whether any token is a dictionary credential (the anchor signal).
-     *
      * @param  list<string>  $tokens
      * @return array{0: list<array{0: string, 1: TokenCredentialClass}>, 1: bool}
      */
@@ -280,10 +233,6 @@ final class CommaCredentialTail
         return [$tokenClasses, $hasDictionarySuffix];
     }
 
-    /**
-     * classify a comma-tail token for the credential scan (np-cr-025): the
-     * former 0/1/2 magic ints are TokenCredentialClass cases
-     */
     private function credentialClass(string $token, bool $uniformInput): TokenCredentialClass
     {
         $key = Text::key($token);
@@ -305,10 +254,6 @@ final class CommaCredentialTail
         return TokenCredentialClass::Name;
     }
 
-    /**
-     * a dictionary-anchored credential token renders with its dictionary form;
-     * an unknown candidate renders verbatim.
-     */
     private function newCredentialSuffix(string $token, TokenCredentialClass $class): Suffix
     {
         return $class === TokenCredentialClass::DictionaryCredential
@@ -317,9 +262,6 @@ final class CommaCredentialTail
     }
 
     /**
-     * a segment is credential-only when it has tokens and every one is a
-     * dictionary credential or an unknown-credential candidate
-     *
      * @param  list<array{0: string, 1: TokenCredentialClass}>  $tokenClasses
      */
     private static function isCredentialOnlySegment(array $tokenClasses): bool
@@ -338,10 +280,8 @@ final class CommaCredentialTail
     }
 
     /**
-     * peel a trailing run of unknown-credential candidates off a mixed segment
-     * so a later dictionary segment can anchor them ("John FACS, MD"). An
-     * all-candidate segment is not peeled: that path is handled as pure
-     * candidates above.
+     * Defer mixed-segment tails so a later dictionary segment can anchor them.
+     * Leave all-candidate segments intact for the pure-segment path.
      *
      * @param  list<array{0: string, 1: TokenCredentialClass}>  $tokenClasses
      * @return array{0: list<string>, 1: list<string>}
@@ -373,9 +313,6 @@ final class CommaCredentialTail
     }
 
     /**
-     * flatten pending unknown-candidate runs back into parts, as suffixes when
-     * a dictionary segment anchored them, else as name tokens
-     *
      * @param  list<list<string>>  $runs
      * @return array<int, AbstractPart|string>
      */

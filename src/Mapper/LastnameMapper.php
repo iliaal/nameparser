@@ -52,9 +52,6 @@ class LastnameMapper extends AbstractMapper
     }
 
     /**
-     * we map the parts in reverse order because it makes more
-     * sense to parse for the lastname starting from the end
-     *
      * @param  PartArray  $parts
      * @return PartArray
      */
@@ -71,9 +68,7 @@ class LastnameMapper extends AbstractMapper
         while (--$k >= 0) {
             $part = $parts[$k];
 
-            // a nickname between surname tokens is transparent: the scan must
-            // bind past it ("Hidalgo (Hid) Castillo") instead of stranding the
-            // far-side tokens as invisible raw strings
+            // Bind across nicknames inside compound surnames.
             if ($part instanceof Nickname) {
                 continue;
             }
@@ -106,9 +101,6 @@ class LastnameMapper extends AbstractMapper
     }
 
     /**
-     * try to map this part as a lastname prefix or as a combined
-     * lastname part containing a prefix
-     *
      * @param  PartArray  $parts
      */
     private function mapAsPrefixIfPossible(array $parts, int $k): ?Lastname
@@ -130,10 +122,6 @@ class LastnameMapper extends AbstractMapper
         return null;
     }
 
-    /**
-     * check if the given part is a combined lastname part
-     * that ends in a lastname prefix
-     */
     private function isCombinedWithPrefix(string $part): bool
     {
         $pos = strpos($part, '-');
@@ -146,8 +134,6 @@ class LastnameMapper extends AbstractMapper
     }
 
     /**
-     * skip through the parts we want to ignore and return the start index
-     *
      * @param  PartArray  $parts
      */
     protected function skipIgnoredParts(array $parts): int
@@ -161,9 +147,7 @@ class LastnameMapper extends AbstractMapper
                 continue;
             }
 
-            // a trailing letterless placeholder ("John Smith -") is not a
-            // surname; leave it raw so the real surname still binds. An
-            // ASCII-alnum first byte short-circuits the common name token.
+            // Skip trailing punctuation placeholders; ordinary ASCII names avoid the regex.
             if (is_string($part)
                 && ($part === '' || ! ctype_alnum($part[0]))
                 && preg_match('/[\p{L}\p{N}]/u', $part) !== 1) {
@@ -177,10 +161,7 @@ class LastnameMapper extends AbstractMapper
     }
 
     /**
-     * indicates if we should stop mapping at the given index $k
-     *
-     * the assumption is that lastname parts have already been found
-     * but we want to see if we should add more parts
+     * Check whether an already-started surname should absorb more parts.
      *
      * @param  PartArray  $parts
      */
@@ -194,8 +175,6 @@ class LastnameMapper extends AbstractMapper
             return true;
         }
 
-        // judge the stop against the next surname-relevant part; an extracted
-        // nickname between surname tokens is transparent to the heuristic
         $lastPart = $parts[$this->skipNicknameParts($parts, $k + 1)];
 
         if ($lastPart instanceof LastnamePrefix) {
@@ -211,9 +190,6 @@ class LastnameMapper extends AbstractMapper
         return $length === 1 || $length >= 3;
     }
 
-    /**
-     * indicates if the given part should be ignored (skipped) during mapping
-     */
     protected function isIgnoredPart(AbstractPart|string $part): bool
     {
         return $part instanceof Suffix
@@ -223,10 +199,7 @@ class LastnameMapper extends AbstractMapper
     }
 
     /**
-     * remap ignored parts as lastname
-     *
-     * if the mapping did not derive any lastname this is called to transform
-     * any previously ignored parts into lastname parts
+     * If no surname was found, reconsider the skipped parts.
      *
      * @param  PartArray  $parts
      * @return PartArray
@@ -242,10 +215,7 @@ class LastnameMapper extends AbstractMapper
                 break;
             }
 
-            // a lone suffix or salutation is not a surname: "Dr., John" keeps
-            // "Dr." a Salutation rather than promoting it to Lastname when the
-            // surname segment carried no actual name token. An ignored
-            // connector ("John Smith and") is not a surname either.
+            // Titles, credentials, and connectors cannot become a missing surname.
             if ($part instanceof Suffix || $part instanceof Salutation || $part instanceof Ignored) {
                 continue;
             }
@@ -267,14 +237,8 @@ class LastnameMapper extends AbstractMapper
     }
 
     /**
-     * Assuming that the part at the given index is matched as a prefix,
-     * determines if the prefix should be applied to the lastname.
-     *
-     * We only apply it to the lastname if we already have at least one
-     * lastname part and there are other parts left in
-     * the name (this effectively prioritises firstname over prefix matching).
-     *
-     * This expects the parts array and index to be in the original order.
+     * Prefer a firstname over a lone prefix unless surname-only context or an
+     * adjacent prefix resolves the ambiguity. Indexes use the original order.
      *
      * @param  PartArray  $parts
      */
@@ -286,17 +250,12 @@ class LastnameMapper extends AbstractMapper
             return false;
         }
 
-        // a prefix immediately followed by another prefix is a leading particle
-        // of a multi-word surname ("von der Heide", "de la Cruz"), so it binds to
-        // the lastname even with no firstname before it (a bare or salutation-led
-        // surname) rather than leaking the particle into the firstname
+        // Adjacent particles establish a surname even without a firstname.
         if (($parts[$index + 1] ?? null) instanceof LastnamePrefix) {
             return true;
         }
 
-        // in a surname-only segment (the part before the comma in "Last, First")
-        // there is no firstname to prioritise, so a leading prefix with nothing
-        // before it still belongs to the lastname rather than becoming a firstname
+        // The comma already identifies this segment as surname-only.
         if ($this->surnameOnly) {
             return true;
         }
@@ -304,17 +263,12 @@ class LastnameMapper extends AbstractMapper
         return $this->hasUnmappedPartsBefore($parts, $index);
     }
 
-    /**
-     * check if the given word is a lastname prefix
-     */
     protected function isPrefix(string $word): bool
     {
         return array_key_exists($this->getKey($word), $this->prefixes);
     }
 
     /**
-     * find the next non-nickname index in parts
-     *
      * @param  PartArray  $parts
      */
     protected function skipNicknameParts(array $parts, int $startIndex): int

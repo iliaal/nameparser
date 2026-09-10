@@ -11,21 +11,9 @@ use Iliaal\NameParser\Mapper\NicknameMapper;
 use Iliaal\NameParser\Mapper\SalutationMapper;
 use Iliaal\NameParser\Mapper\SuffixMapper;
 
-/**
- * sub-parser and mapper-pipeline construction for Parser (np-cr-026): every
- * comma-segment pipeline and its element mappers are built here from explicit
- * configuration, so adding, removing, or reordering a stage happens once.
- * Parser keeps the memoization, the invalidation, and the protected getters
- * (thin router); this factory owns the construction.
- */
 final class SegmentParserFactory
 {
     /**
-     * the default single-segment mapper pipeline, also the base the
-     * comma-segment builders derive from (np-o-13): adding, removing, or
-     * reordering a stage happens here and in the element factories below, not
-     * in four inline lists drifting in lockstep.
-     *
      * @param  array<int|string, string>  $salutations
      * @param  array<int|string, string>  $suffixes
      * @param  array<string, string>  $delimiters
@@ -55,11 +43,6 @@ final class SegmentParserFactory
         ];
     }
 
-    /**
-     * the one first-name stage (np-r2-07): the only element builder the
-     * default pipeline and the second-segment parser inlined, so a factory
-     * default/stage change had two stale sites
-     */
     public static function newFirstnameMapper(): FirstnameMapper
     {
         return new FirstnameMapper();
@@ -150,10 +133,8 @@ final class SegmentParserFactory
     }
 
     /**
-     * sub-parsers re-enter parse() on already-split segments, so they must
-     * inherit both whitespace and nickname delimiters: the structural-comma
-     * mask keys off the parser's nicknameDelimiters, not the mapper
-     * constructor arg
+     * Segment parsers inherit delimiters because structural-comma masking
+     * uses parser configuration, not the NicknameMapper constructor argument.
      *
      * @param  array<string, string>  $delimiters
      */

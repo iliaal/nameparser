@@ -7,12 +7,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Real provider names sampled from the public NPPES/NPI registry, selected to
- * span credential, suffix, prefix, comma, particle, hyphen, apostrophe, and
- * middle-name forms. Locks first/last extraction on genuine clinician names.
- *
- * Comparison is exact-case: the expectations record the parser's canonical
- * title-case (NPPES stores names upper-case), so casing regressions fail.
+ * Names sampled from NPPES/NPI; expectations use parser casing, not registry uppercase.
  */
 class NpiCorpusTest extends TestCase
 {
@@ -22,8 +17,6 @@ class NpiCorpusTest extends TestCase
     public static function provider(): array
     {
         return [
-            // apostrophe (expectations are the parser's canonical title-case,
-            // not the raw NPPES casing: the fold after the apostrophe is exact)
             ['Taylor D\'hedouville', 'Taylor', 'D\'Hedouville'],
             ['O\'brien, Christopher', 'Christopher', 'O\'Brien'],
             ['Philip O\'brate', 'Philip', 'O\'Brate'],
@@ -42,7 +35,6 @@ class NpiCorpusTest extends TestCase
             ['Danielle O\'connell', 'Danielle', 'O\'Connell'],
             ['April O\'neil', 'April', 'O\'Neil'],
             ['D\'addario, Dawn', 'Dawn', 'D\'Addario'],
-            // comma
             ['Hahn, Victoria', 'Victoria', 'Hahn'],
             ['Soucier, Richard', 'Richard', 'Soucier'],
             ['Ronnermann, Drew', 'Drew', 'Ronnermann'],
@@ -65,7 +57,6 @@ class NpiCorpusTest extends TestCase
             ['Miller, Jennifer', 'Jennifer', 'Miller'],
             ['Kim, Joseph', 'Joseph', 'Kim'],
             ['Echelmeyer, Meaghan', 'Meaghan', 'Echelmeyer'],
-            // credential
             ['Griffiths, Veronica RN', 'Veronica', 'Griffiths'],
             ['Dr. Lana  Wahid, M.D.', 'Lana', 'Wahid'],
             ['E Lawrence, RPH', 'E', 'Lawrence'],
@@ -96,7 +87,6 @@ class NpiCorpusTest extends TestCase
             ['Graham, Michelle CFNP', 'Michelle', 'Graham'],
             ['Ogbonna, Oliver LCSW', 'Oliver', 'Ogbonna'],
             ['Patel, Vinodbhai RPH', 'Vinodbhai', 'Patel'],
-            // hyphen
             ['Zenaida Viri-Schaller', 'Zenaida', 'Viri-Schaller'],
             ['Temihya Walker-Parson', 'Temihya', 'Walker-Parson'],
             ['Shelly Skjolaas-Lindell', 'Shelly', 'Skjolaas-Lindell'],
@@ -115,7 +105,6 @@ class NpiCorpusTest extends TestCase
             ['Rheana Wade-Macios', 'Rheana', 'Wade-Macios'],
             ['Zeena Abdul-Kafor', 'Zeena', 'Abdul-Kafor'],
             ['Martinez-Nava, Diana', 'Diana', 'Martinez-Nava'],
-            // middle
             ['Shawanda L Johnson', 'Shawanda', 'Johnson'],
             ['Douglas W. Perkins', 'Douglas', 'Perkins'],
             ['Demarco I. Jones', 'Demarco', 'Jones'],
@@ -136,7 +125,6 @@ class NpiCorpusTest extends TestCase
             ['Ghousia Jabeen Pasha', 'Ghousia', 'Pasha'],
             ['Laurie B Sanders', 'Laurie', 'Sanders'],
             ['Jeremy M. Morris', 'Jeremy', 'Morris'],
-            // particle
             ['Vance J Van Tassell', 'Vance', 'van Tassell'],
             ['Elizabeth De La Torre', 'Elizabeth', 'de la Torre'],
             ['Theresa Di Forti', 'Theresa', 'di Forti'],
@@ -161,7 +149,6 @@ class NpiCorpusTest extends TestCase
             ['Susan Von Rosk', 'Susan', 'von Rosk'],
             ['Beatriz Del Villar', 'Beatriz', 'del Villar'],
             ['Tatyana Der', 'Tatyana', 'Der'],
-            // plain
             ['Andrew Bonin', 'Andrew', 'Bonin'],
             ['David Jaller', 'David', 'Jaller'],
             ['Kristi Frese', 'Kristi', 'Frese'],
@@ -178,7 +165,6 @@ class NpiCorpusTest extends TestCase
             ['Alicia Silvers', 'Alicia', 'Silvers'],
             ['Tracy Askew', 'Tracy', 'Askew'],
             ['Chad Johnson', 'Chad', 'Johnson'],
-            // prefix
             ['Dr. Robert Graessle', 'Robert', 'Graessle'],
             ['Miss Crystal Guerrero', 'Crystal', 'Guerrero'],
             ['Mr. John Baldelli', 'John', 'Baldelli'],
@@ -197,7 +183,6 @@ class NpiCorpusTest extends TestCase
             ['Dr. Myron Pulier', 'Myron', 'Pulier'],
             ['Dr. Ursula Nawab', 'Ursula', 'Nawab'],
             ['Miss Emily Jefferys', 'Emily', 'Jefferys'],
-            // suffix
             ['Robert Naples JR.', 'Robert', 'Naples'],
             ['James Pridgen III', 'James', 'Pridgen'],
             ['Ruben Meza JR.', 'Ruben', 'Meza'],
@@ -220,9 +205,6 @@ class NpiCorpusTest extends TestCase
     {
         $name = (new Parser())->parse($input);
 
-        // exact-case: the provider expectations are the parser's canonical
-        // title-case (apostrophe fold, lower-cased particles), so a casing
-        // regression fails here instead of hiding behind a case fold.
         $this->assertSame($first, $name->getFirstname(), "first name for '$input'");
         $this->assertSame($last, $name->getLastname(), "last name for '$input'");
     }
@@ -290,10 +272,6 @@ class NpiCorpusTest extends TestCase
     }
 
     /**
-     * Non-credential corpus rows must not grow a suffix, and their middle /
-     * initial placement is pinned: single letters stay initials, real middle
-     * tokens stay middlenames, everything else stays out of both getters.
-     *
      * @return array<string, array{string, string, string}>
      */
     public static function nonCredentialFieldProvider(): array

@@ -99,8 +99,7 @@ class InitialMapperTest extends AbstractMapperTestCase
                     1,
                 ],
             ],
-            // caseless two-character token (Han) must not be split into initials:
-            // it is trivially "uppercase" but carries no case signal
+            // Caseless scripts provide no signal for splitting initials.
             [
                 'input' => [
                     "\u{674E}\u{660E}",
@@ -111,7 +110,6 @@ class InitialMapperTest extends AbstractMapperTestCase
                     'Wang',
                 ],
             ],
-            // lone caseless character is a whole name, not an initial
             [
                 'input' => [
                     'Wang',
@@ -126,7 +124,6 @@ class InitialMapperTest extends AbstractMapperTestCase
                     true,
                 ],
             ],
-            // lone cased character stays an initial
             [
                 'input' => [
                     'Durand',

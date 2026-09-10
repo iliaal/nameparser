@@ -604,8 +604,6 @@ class ParserTest extends TestCase
         $name = $parser->parse($input);
 
         $this->assertInstanceOf(Name::class, $name);
-        // assertSame (not assertEquals): the provider rows are written in the
-        // canonical getAll() key order, so a key reorder or type drift fails.
         $this->assertSame($expectation, $name->getAll());
     }
 
@@ -668,9 +666,6 @@ class ParserTest extends TestCase
 
     public function testEmptyStringNicknameDelimiterParsesWithoutWarning(): void
     {
-        // an empty-string delimiter key would compile to a degenerate regexp and
-        // warn per token; it must be filtered so parsing proceeds normally.
-        // phpunit.xml sets failOnWarning, so a warning here fails the test.
         $parser = new Parser();
         $parser->setNicknameDelimiters(['' => '']);
 
@@ -735,8 +730,6 @@ class ParserTest extends TestCase
 
     public function testConfigChangeAfterFirstParseTakesEffect(): void
     {
-        // a reused parser must honor a setter called after the first parse(),
-        // not the configuration cached on that first call
 
         $parser = new Parser();
         $parser->parse('Anne Jones');
@@ -824,8 +817,7 @@ class ParserTest extends TestCase
 
     public function testSubclassMayOverrideSettersWithConcreteReturnType(): void
     {
-        // the released 1.x API declares concrete Parser returns; a subclass
-        // overriding a fluent setter with ": Parser" must keep loading
+        // The released 1.x API permits concrete Parser returns in subclass setters.
         $parser = new class extends Parser {
             public bool $overrideRan = false;
 
@@ -845,7 +837,6 @@ class ParserTest extends TestCase
 
     public function testSubclassMayDeclareItsOwnCustomMappersProperty(): void
     {
-        // internal bookkeeping stays private so this declaration cannot collide
         $parser = new class extends Parser {
             /**
              * @var array<int, string>
@@ -871,9 +862,7 @@ class ParserTest extends TestCase
     }
 
     /**
-     * custom multi-char pairs must shield on the left segment when a structural
-     * comma follows (segment sub-parsers re-enter parse() and must inherit the
-     * delimiter map used by the structural-comma mask)
+     * Segment parsers must inherit delimiters used by structural-comma masking.
      */
     public function testCustomDelimiterLeftSegmentWithTrailingCredential(): void
     {
@@ -946,8 +935,6 @@ class ParserTest extends TestCase
 
     public function testRepromotedDefaultMappersKeepConfigResync(): void
     {
-        // an identity re-set of the already-promoted list must not clear the
-        // resync latch and silently detach config setters
         $parser = new Parser();
         $parser->setMappers($parser->getMappers());
         $parser->setMappers($parser->getMappers());

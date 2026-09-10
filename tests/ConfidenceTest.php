@@ -22,8 +22,6 @@ class ConfidenceTest extends TestCase
             'all lower, do collides'       => ['anh tran do'],
             'all lower comma, do collides' => ['smith, do'],
             'all caps comma, VI collides'  => ['NGUYEN, VI'],
-            // all-caps Census-surname colliders: casing carries no signal, so
-            // the stripped roman numeral / MBA could equally be a surname
             'all caps surname-collider II'  => ['JOHN SMITH II'],
             'all caps surname-collider MBA' => ['JANE DOE MBA'],
         ];
@@ -40,8 +38,6 @@ class ConfidenceTest extends TestCase
             'all-caps credential DDS'  => ['Jane Doe DDS'],
             'comma credential DO'      => ['Robert Brown, DO'],
             'plain name'               => ['John Doe'],
-            // uppercase credential-leaning keys must not flag (data is often
-            // all-caps; RN/PT strip cleanly and aren't name-leaning)
             'all-caps credential RN'   => ['DONNA BARRETT, RN'],
             'all-caps credential PT'   => ['MARY JONES, PT'],
         ];
@@ -86,8 +82,6 @@ class ConfidenceTest extends TestCase
 
     public function testFlagsPunctuationSuffixedAmbiguousToken(): void
     {
-        // keying must strip trailing punctuation like the parser does, otherwise
-        // "VI;" would miss the AMBIGUOUS_KEYS lookup that "VI" hits
         $result = Confidence::assess('NGUYEN, VI;');
 
         $this->assertTrue($result['ambiguous']);

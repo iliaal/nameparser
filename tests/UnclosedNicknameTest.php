@@ -7,9 +7,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
- * An opening nickname delimiter with no matching close must not swallow the
- * surname. Regression for inputs like "John (Bob Smith" where upstream lost
- * the last name to the NicknameMapper. Ported from tobyberster/name-parser.
+ * Unclosed-nickname regressions ported from tobyberster/name-parser.
  */
 class UnclosedNicknameTest extends TestCase
 {
@@ -36,11 +34,7 @@ class UnclosedNicknameTest extends TestCase
     }
 
     /**
-     * Mirror of the opener provider for stray closers: a closer with no
-     * earlier opener is not a nickname span. A credential-shaped tail
-     * ('MD)') still maps (the closer is ordinary trailing punctuation), but
-     * a bare name tail keeps the closer glued ('Smith)') and a mid-name
-     * closer rides with its token ('Bob)'), so every getter is pinned.
+     * Stray closers remain attached to names but do not block credential matching.
      *
      * @return array<string, array{string, string, string, string, string}>
      */

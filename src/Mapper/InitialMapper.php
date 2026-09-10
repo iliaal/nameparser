@@ -65,12 +65,7 @@ class InitialMapper extends AbstractMapper
         $parts = $this->normalizeParts($parts);
         $last = count($parts) - 1;
 
-        // Splitting an all-uppercase token into separate initials ("JM" -> J M)
-        // reads the caps as "these are initials". Under uniform-uppercase input
-        // (legacy/registry data) caps carry no signal, so the same heuristic
-        // shreds two-letter given names ("JO" -> J O). Suppress the split there
-        // and keep the token as a name, mirroring the casing-as-signal policy of
-        // SuffixMapper.
+        // Uniform-uppercase input cannot distinguish initials from names such as JO.
         $splitCombined = ! $this->isUniformUpperContext($parts, $this->uniformUpperOverride);
 
         $mapped = [];
@@ -89,11 +84,7 @@ class InitialMapper extends AbstractMapper
                 continue;
             }
 
-            // a surname particle can be short enough to read as an initial: one
-            // grapheme in Irish ("Éamon Ó Cuív") or two in caps ("Jean DE
-            // Vries", which the combined split would shred into D and E). This
-            // mapper runs ahead of LastnameMapper, so claiming the token here
-            // loses the particle outright. Leave it raw either way.
+            // Leave particles such as Ó and DE for LastnameMapper, which runs later.
             if ($this->isPrefix($part)) {
                 $mapped[] = $part;
 
@@ -104,10 +95,6 @@ class InitialMapper extends AbstractMapper
                 $stripped = str_replace('.', '', $part);
                 $length = Text::graphemeLengthUpTo($stripped, $this->combinedMax + 1);
 
-                // Text::isUpperCase() already rejects caseless scripts (CJK,
-                // Hebrew) and digit-only tokens, so a 2-char given name like
-                // "李明" or "123" never reaches the split. The cased check below
-                // is a second gate on the dot-stripped form.
                 if (
                     $length > 1
                     && $length <= $this->combinedMax
@@ -144,8 +131,7 @@ class InitialMapper extends AbstractMapper
 
     protected function isInitial(string $part): bool
     {
-        // a caseless single character ("李") is a whole name, not an initial; an
-        // initial is a genuinely cased letter ("É", "J"). Casing is the signal.
+        // A caseless character such as 李 is a whole name, not an initial.
         if (Text::graphemeLengthUpTo($part, 2) === 1) {
             return Text::isCased($part);
         }

@@ -2,24 +2,12 @@
 
 namespace Iliaal\NameParser;
 
-/**
- * structural comma handling for Parser (np-cr-026): splitting a normalized
- * name on commas that are not shielded inside a nickname span, and masking
- * those shielded commas with a placeholder first. Pure string work over the
- * caller's nickname delimiters; Parser stays the thin router that supplies
- * its configured delimiters.
- */
 final class StructuralCommaSplitter
 {
     public const string COMMA_PLACEHOLDER = "\x00";
 
     /**
-     * bounds for the byte-level mask scan (np-cr-017): nesting depth and total
-     * masked commas are capped so a hostile row (megabytes of openers/commas)
-     * costs bounded time and memory. Past the caps further openers read as
-     * literals and further commas as structural. Only reachable on non-name
-     * input: the token budget rejects such rows at parse() top, and real
-     * nickname spans nest one or two deep with a handful of commas.
+     * Past these scan caps, further openers are literal and commas are structural.
      */
     private const int MAX_MASK_NESTING_DEPTH = 128;
 
@@ -35,8 +23,7 @@ final class StructuralCommaSplitter
             return [$name];
         }
 
-        // masking only swaps ',' <-> a same-width placeholder, so byte offsets
-        // in the masked string map directly back onto the original
+        // The placeholder has the same byte width, preserving original offsets.
         $masked = self::mask($name, $nicknameDelimiters);
 
         $segments = [];
@@ -85,11 +72,7 @@ final class StructuralCommaSplitter
             return $name;
         }
 
-        // char/byte-mix guard (np-o-02): the char scan below substitutes
-        // invalid sequences (changing byte length) while the split slices byte
-        // offsets, so invalid UTF-8 plus an opener byte could shield/expose the
-        // wrong comma. Bail to unmasked (deterministic split); parse() scrubs
-        // invalid input up front, so this only fires for raw-byte callers.
+        // The character scan changes invalid UTF-8 byte lengths, invalidating split offsets.
         if (! mb_check_encoding($name, 'UTF-8')) {
             return $name;
         }
@@ -102,26 +85,18 @@ final class StructuralCommaSplitter
             return $name;
         }
 
-        // byte-level pre-check: no opener byte present means nothing to mask,
-        // skipping the scan on the common bracket-free row
         $openerBytes = implode('', array_merge(array_keys($pairs), array_keys($symmetric)));
         if (strpbrk($name, $openerBytes) === false) {
             return $name;
         }
 
-        // single-byte delimiters scan bytewise (np-cr-011, np-cr-017):
-        // identical results to the char scan on valid UTF-8 (an ASCII byte
-        // never appears inside a multibyte sequence), with no per-character
-        // array, so no length cap is needed and long rows keep their shielding
-        // within bounded cost (nesting-depth + masked-comma caps, documented
-        // on the byte scanner).
+        // ASCII delimiter bytes cannot occur inside valid multibyte characters;
+        // scan without allocating a character array.
         if (self::allSingleByteDelimiters($pairs, $symmetric)) {
             return self::maskAscii($name, $pairs, $symmetric);
         }
 
-        // multibyte delimiters keep the char scan below; hostile megabyte rows
-        // would materialize a per-character array, so past this size commas
-        // split unshielded (documented real-names-are-tiny tradeoff).
+        // Bound character-array allocation for multibyte delimiters; longer input is unshielded.
         if (strlen($name) > 4096) {
             return $name;
         }
@@ -130,8 +105,6 @@ final class StructuralCommaSplitter
     }
 
     /**
-     * partition sanitized delimiters into asymmetric pairs and symmetric quotes.
-     *
      * @param  array<string, string>  $delimiters
      * @return array{0: array<string, string>, 1: array<string, true>}
      */
@@ -156,9 +129,6 @@ final class StructuralCommaSplitter
     }
 
     /**
-     * whether every delimiter is one byte (on valid UTF-8 input, one byte is
-     * ASCII, which never appears inside a multibyte sequence)
-     *
      * @param  array<string, string>  $pairs
      * @param  array<string, true>  $symmetric
      */
@@ -180,11 +150,7 @@ final class StructuralCommaSplitter
     }
 
     /**
-     * byte-level twin of the char scan in maskMultibyte(), used when all
-     * delimiters are single-byte: byte offsets are char offsets on valid UTF-8
-     * input, so the results are identical with no per-character array and no
-     * length cap (np-cr-011, np-cr-017). Mirrors the char scan rule for rule,
-     * including symmetric open-at-token-start / close-at-token-end.
+     * ASCII counterpart of maskMultibyte(), with the same token-boundary rules.
      *
      * @param  array<string, string>  $pairs
      * @param  array<string, true>  $symmetric
@@ -198,8 +164,6 @@ final class StructuralCommaSplitter
 
         $length = strlen($name);
 
-        // token-end byte offsets per symmetric quote (closer length is 1), so
-        // each opener's closer lookahead is a bounded list walk
         /** @var array<string, list<int>> $symmetricEnds */
         $symmetricEnds = [];
         if ($symmetric !== []) {
@@ -293,10 +257,8 @@ final class StructuralCommaSplitter
     }
 
     /**
-     * token-end byte offsets per symmetric quote for the byte scan: each token
-     * ending in a quote char records that offset, unless the token is
-     * self-balanced (opens with the same quote), so a leading elided particle
-     * ("'t") never serves as the closer for an earlier orphan opener.
+     * Index token-final quotes, excluding self-balanced tokens that cannot
+     * close an earlier orphan opener.
      *
      * @param  array<string, true>  $symmetric
      * @return array<string, list<int>>
@@ -321,9 +283,7 @@ final class StructuralCommaSplitter
                             continue;
                         }
 
-                        // a self-balanced quoted token ("'Genius'") closes
-                        // itself; its tail quote must not serve as the
-                        // closer for an earlier orphan opener
+                        // Self-balanced quoted tokens cannot close an earlier orphan quote.
                         if ($end - $tokenStart >= 2 && $name[$tokenStart] === $quote) {
                             continue;
                         }
@@ -342,8 +302,6 @@ final class StructuralCommaSplitter
     }
 
     /**
-     * char-level mask scan for multibyte delimiters.
-     *
      * @param  array<string, string>  $pairs
      * @param  array<string, true>  $symmetric
      */
@@ -352,8 +310,7 @@ final class StructuralCommaSplitter
         $chars = mb_str_split($name, 1, 'UTF-8');
         $total = count($chars);
 
-        // pre-split every delimiter once; openers sorted longest-first so a
-        // multi-character delimiter ("<<") wins over a single-char prefix ("<")
+        // Longest opener wins, so << takes precedence over <.
         /** @var list<array{list<string>, string, bool}> $openers opener chars, closer string, is-symmetric */
         $openers = [];
         foreach ($pairs as $open => $close) {
@@ -370,10 +327,7 @@ final class StructuralCommaSplitter
             $openersByFirst[$opener[0][0]][] = $opener;
         }
 
-        // token-end offsets per symmetric delimiter, so each opener's closer
-        // lookahead is a bounded list walk instead of a rescan. Skipped when
-        // no symmetric delimiter exists (np-cr-011): the common asymmetric
-        // row avoids the token-range materialization entirely.
+        // Precompute closer offsets to avoid rescanning for every opener.
         /** @var array<string, list<int>> $symmetricEnds */
         $symmetricEnds = [];
         if ($symmetric !== []) {
@@ -470,9 +424,6 @@ final class StructuralCommaSplitter
     }
 
     /**
-     * token-end char offsets per symmetric quote for the char scan: the twin
-     * of symmetricEndsAscii() over characters instead of bytes.
-     *
      * @param  list<string>  $chars
      * @param  array<string, true>  $symmetric
      * @return array<string, list<int>>
@@ -506,10 +457,7 @@ final class StructuralCommaSplitter
                     continue;
                 }
 
-                // a self-balanced quoted token ("'Genius'") closes itself; its
-                // tail quote must not serve as the closer for an earlier orphan
-                // opener, or a leading elided particle ("'t") would open a span
-                // that swallows the structural comma
+                // Self-balanced quoted tokens cannot close an earlier orphan quote.
                 if ($end - $start >= $len * 2 && self::charsMatchAt($chars, $start, $quoteChars)) {
                     continue;
                 }
@@ -522,8 +470,6 @@ final class StructuralCommaSplitter
     }
 
     /**
-     * whether the character sequence at $offset equals $needle
-     *
      * @param  list<string>  $chars
      * @param  list<string>  $needle
      */
@@ -544,9 +490,6 @@ final class StructuralCommaSplitter
     }
 
     /**
-     * retained for subclasses that reach the splitter through Parser: all
-     * entry points are static, and Parser keeps thin private delegates.
-     *
      * @see Parser
      */
     private function __construct() {}

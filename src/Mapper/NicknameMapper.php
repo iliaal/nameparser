@@ -14,8 +14,7 @@ class NicknameMapper extends AbstractMapper
     private const int MAX_NESTING_DEPTH = 64;
 
     /**
-     * default nickname delimiter pairs; also used by Parser for structural
-     * comma masking so the two stay in lockstep
+     * Shared with structural-comma masking.
      *
      * @var array<string, string>
      */
@@ -52,11 +51,7 @@ class NicknameMapper extends AbstractMapper
             $this->delimiters = $delimiters;
         }
 
-        // an empty-string key compiles to a degenerate pattern that matches
-        // every token and warns per parse; an invalid-UTF-8 key or value makes
-        // the /u pattern fail compilation with a warning per token. Drop both
-        // classes; if nothing valid remains the mapper no-ops (buildRegexp
-        // returns '').
+        // Reject delimiter keys that would make the Unicode regex invalid or match every token.
         $this->delimiters = Text::sanitizeNicknameDelimiters($this->delimiters);
 
         $this->regexp = $this->buildRegexp();
@@ -103,8 +98,6 @@ class NicknameMapper extends AbstractMapper
 
             $isEncapsulated = $delimiterStack !== [];
 
-            // most tokens never open a nickname; skip the opener regex when no
-            // delimiter byte is present and we are not already inside a span
             if (! $isEncapsulated && $openerBytes !== '' && strpbrk($part, $openerBytes) === false) {
                 continue;
             }
@@ -115,9 +108,7 @@ class NicknameMapper extends AbstractMapper
                 $stripped = mb_substr($part, mb_strlen($opener, 'UTF-8'), null, 'UTF-8');
                 $isSymmetric = $opener === $closer;
 
-                // a symmetric delimiter (quote) is only an opener when its closing
-                // partner appears later; otherwise a leading quote is an elided
-                // particle ("'t Hooft") that must survive verbatim.
+                // An unmatched leading quote may be an elided particle ("'t Hooft").
                 $shouldOpen = ! $isSymmetric
                     || (! isset($openSymmetric[$opener])
                         && $this->symmetricCloserAppears($parts, $k, $stripped, $closer));
@@ -164,9 +155,7 @@ class NicknameMapper extends AbstractMapper
                 }
 
                 if ($delimiterStack === []) {
-                    // the closer may carry glued trailing punctuation
-                    // ("(Bob);"); drop it with the closer so it cannot leak
-                    // into the nickname value
+                    // Drop punctuation glued to the closer, as in "(Bob);".
                     if (! str_ends_with($part, $closed[0]['close'])) {
                         $part = rtrim($part, '.,;:');
                     }
@@ -179,8 +168,7 @@ class NicknameMapper extends AbstractMapper
 
             $value = trim($part, '"\'');
 
-            // a lone delimiter pair (" ( ) ") cleans to nothing; emitting an empty
-            // Nickname pollutes getNickname() with joined spaces, so drop the token.
+            // Empty nickname parts would add spaces to getNickname().
             if ($value === '') {
                 $emptyKeys[$k] = true;
 
@@ -190,20 +178,16 @@ class NicknameMapper extends AbstractMapper
             $parts[$k] = new Nickname($value);
         }
 
-        // an opening delimiter with no matching close is not a nickname: revert
-        // the swallowed parts so the surname survives (e.g. "John (Bob Smith").
+        // Restore unclosed spans so "John (Bob Smith" keeps its surname.
         if ($delimiterStack !== []) {
             foreach ($pending as $k => $original) {
                 $parts[$k] = $original;
 
-                // reverted tokens are restored verbatim, so a value that cleaned
-                // empty must not also be dropped below
+                // Restored raw tokens must not also be dropped as empty nicknames.
                 unset($emptyKeys[$k]);
             }
 
-            // the opening token still carries its unmatched delimiter char; drop
-            // it so a stray "(" or quote does not leak into a name part
-            // ("Bob Jones (" must not yield last name "Jones (").
+            // Remove a lone unmatched opener so "Bob Jones (" keeps surname Jones.
             $open = array_key_first($pending);
             if ($open !== null && is_string($parts[$open])) {
                 $cleaned = $parts[$open];
@@ -241,9 +225,7 @@ class NicknameMapper extends AbstractMapper
             return $matches;
         }
 
-        // an asymmetric closer with glued trailing punctuation ("(Bob);") still
-        // closes the span; the token-final rule only protects symmetric quotes
-        // (a quote inside "'t Hooft" must not close anything)
+        // Asymmetric closers may carry punctuation; symmetric quotes must end the token.
         $trimmed = rtrim($part, '.,;:');
         if ($trimmed === $part || $trimmed === '') {
             return 0;
@@ -285,11 +267,7 @@ class NicknameMapper extends AbstractMapper
     }
 
     /**
-     * whether a symmetric delimiter opened at $openKey has a matching closer
-     * later: the same token's tail, or a subsequent token ending with $closer.
-     * The last token index ending with each closer is precomputed per map()
-     * call, so a run of unmatched openers stays linear instead of rescanning
-     * the remaining parts for every one.
+     * Cache the last closer per quote to keep repeated unmatched openers linear.
      *
      * @param  PartArray  $parts
      */
@@ -309,9 +287,7 @@ class NicknameMapper extends AbstractMapper
                     continue;
                 }
 
-                // a self-balanced quoted token ("'Genius'") closes itself; its
-                // tail quote is not a closer for an earlier orphan opener, or a
-                // leading elided particle ("'t") would swallow the row
+                // Self-balanced quoted tokens cannot close an earlier orphan quote.
                 if (mb_strlen($part, 'UTF-8') >= $closerLength * 2
                     && str_starts_with($part, $closer)) {
                     continue;
@@ -336,8 +312,7 @@ class NicknameMapper extends AbstractMapper
 
         $keys = array_keys($this->delimiters);
 
-        // longest opener first so a multi-char delimiter ("<<") wins over a
-        // single-char prefix ("<") when both are configured
+        // Longest opener wins, so << takes precedence over <.
         usort($keys, static fn(string $a, string $b): int => mb_strlen($b, 'UTF-8') <=> mb_strlen($a, 'UTF-8'));
 
         $alternation = implode('|', array_map(
@@ -348,9 +323,6 @@ class NicknameMapper extends AbstractMapper
         return '/^(' . $alternation . ')/u';
     }
 
-    /**
-     * concatenated opener characters for a cheap strpbrk prefilter
-     */
     private function openerBytes(): string
     {
         return implode('', array_keys($this->delimiters));

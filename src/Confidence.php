@@ -72,10 +72,7 @@ class Confidence
             Text::assertInputTokenCount(count($tokens));
         }
 
-        // uniform-case from tokens (same shape as the parser), never from a
-        // whole-string letters() strip on multi-megabyte hostile rows;
-        // single-sourced through Text so caseless/digit-only tokens read
-        // exactly as the mapper-level gates see them
+        // Use the parser's token-level casing rules, including caseless scripts.
         $uniformUpper = Text::isUniformUpperTokens($tokens);
         $uniformLower = self::isUniformLowerTokens($tokens);
 
@@ -94,11 +91,7 @@ class Confidence
             $tokenLower = Text::isLowerCase($token);
 
             if ($uniformUpper) {
-                // an uppercase token is read as a credential and stripped; flag
-                // it only when it plausibly collides with a real name (Do, Ma,
-                // Ba... or a Census surname like Ii/Iv/Mba), since casing
-                // carries no signal here. Clean creds (RN/PT/OD...) stay
-                // unflagged to keep review noise down on all-caps datasets.
+                // Uniform caps hide name/credential collisions; clean credentials stay unflagged.
                 if (isset(SuffixMapper::NAME_LEANING_KEYS[$key])
                     || isset(SuffixMapper::SURNAME_COLLIDING_KEYS[$key])) {
                     $notes["'{$token}' could be a name or a credential; input casing is uniform"] = true;
@@ -115,10 +108,8 @@ class Confidence
         if ($lead !== ''
             && isset(SalutationMapper::NAME_COLLIDING_KEYS[$key])
             && ($salutations === null || array_key_exists($key, $salutations))) {
-            // Nicknames and suffixes decorate a name rather than resolving
-            // whether a colliding leading title is a salutation or a given
-            // name. A comma settles it only when name-bearing content exists
-            // on both sides.
+            // Decorations do not resolve title/name ambiguity; a comma needs
+            // name-bearing content on both sides.
             $nameTokens = self::rawNameTokens(self::mapDecorations($tokens, $suffixes, $nicknameDelimiters));
             if (count($nameTokens) === 2
                 && ! self::hasDecidingStructuralComma($original, $suffixes, $nicknameDelimiters, $whitespace)) {
@@ -213,8 +204,6 @@ class Confidence
      */
     private static function mapDecorations(array $tokens, ?array $suffixes, ?array $nicknameDelimiters = null): array
     {
-        // shared factory construction (CR-023 minimal path): same
-        // nickname-then-suffix order as before, built in one place
         ['suffix' => $suffixMapper, 'nickname' => $nicknameMapper] = AbstractMapper::decorationAnalyzers(
             $suffixes ?? English::SUFFIXES,
             $nicknameDelimiters ?? [],
@@ -236,13 +225,8 @@ class Confidence
     }
 
     /**
-     * Whether a structural comma sits between name-bearing content on both
-     * sides. Single-pass: each comma segment is decoration-mapped once with a
-     * reused suffix mapper, recording the first and last name-bearing segment;
-     * a deciding boundary exists exactly when those differ. The old
-     * per-boundary full re-merge plus two fresh SuffixMapper passes never
-     * early-returned on hostile all-suffix rows (all ~65k boundaries each
-     * re-mapped O(n) tokens); this is linear in the input.
+     * A comma decides name order only when names occur on both sides.
+     * Map each segment once to keep delimiter-heavy input linear.
      *
      * @param  array<int|string, string>|null  $suffixes
      * @param  array<string, string>|null  $nicknameDelimiters

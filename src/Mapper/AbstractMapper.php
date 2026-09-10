@@ -11,8 +11,6 @@ use Iliaal\NameParser\Text;
 abstract class AbstractMapper
 {
     /**
-     * implements the mapping of parts
-     *
      * @param  PartArray  $parts
      * @return PartArray
      */
@@ -28,8 +26,6 @@ abstract class AbstractMapper
     }
 
     /**
-     * checks if there are still unmapped parts left before the given position
-     *
      * @param  PartArray  $parts
      */
     protected function hasUnmappedPartsBefore(array $parts, int $index): bool
@@ -64,22 +60,14 @@ abstract class AbstractMapper
         return false;
     }
 
-    /**
-     * get the registry lookup key for the given word
-     */
     protected function getKey(string $word): string
     {
         return Text::key($word);
     }
 
     /**
-     * true when every unmapped cased token is uppercase, i.e. the input casing
-     * gives no signal (all-caps registry data). Already-mapped parts are
-     * ignored because their normalized values may differ from the original
-     * token casing. When $override is non-null it is returned as-is (comma
-     * pipeline whole-input signal). Single-sourced through
-     * Text::isUniformUpperTokens(); caseless and digit-only tokens carry no
-     * signal either way.
+     * Mapped parts may have normalized casing, so only unmapped tokens carry
+     * the input signal. A comma-pipeline override supplies whole-input casing.
      *
      * @param  PartArray  $parts
      */
@@ -103,14 +91,7 @@ abstract class AbstractMapper
     }
 
     /**
-     * Centralized reset for the sticky @internal whole-input casing overrides
-     * (CR-023 minimal path: no parse-context map() argument, so the temporal
-     * coupling remains and is contained here). A map() signature change would
-     * ripple through every Parser call site plus external callers; instead the
-     * override stays setter-carried and Parser::parse() funnels its entry reset
-     * through this one helper rather than an inline instanceof loop.
-     * Confidence never sets overrides (fresh mappers per assess()), so only
-     * the Parser pipelines need it.
+     * Reset whole-input casing overrides before reusing memoized parser mappers.
      *
      * @param  iterable<int, AbstractMapper>  $mappers
      */
@@ -124,12 +105,7 @@ abstract class AbstractMapper
     }
 
     /**
-     * Shared decoration-analyzer construction (CR-023 minimal path: the
-     * factory both Confidence and SalutationMapper route through instead of
-     * each hand-building the pair). Ordering knowledge stays with the caller:
-     * Confidence maps nickname-then-suffix, SalutationMapper::analyzeRemainder
-     * maps suffix-nickname-suffix; only the construction (dictionaries,
-     * matchSinglePart, reservedParts) is shared here.
+     * Construction is shared; callers retain their decoration-mapping order.
      *
      * @param  array<int|string, string>  $suffixes
      * @param  array<string, string>  $delimiters

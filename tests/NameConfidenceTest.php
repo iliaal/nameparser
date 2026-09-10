@@ -52,8 +52,6 @@ class NameConfidenceTest extends TestCase
 
     public function testManuallyConstructedNameFallsBackToReconstruction(): void
     {
-        // no source recorded: getConfidence() reconstructs from the parts and
-        // still returns the documented shape without error
         $name = new Name();
         $result = $name->getConfidence();
 

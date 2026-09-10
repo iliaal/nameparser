@@ -14,15 +14,8 @@ use Iliaal\NameParser\Text;
 use Iliaal\NameParser\TokenCredentialClass;
 use PHPUnit\Framework\TestCase;
 
-/**
- * Remediation pins for the Parser/Text Phase-1 beads: each test names its
- * bead. Behavior that an existing test pins (CR-014 purge scope) is asserted
- * as documented, not as changed; the STOP is recorded on the bead itself.
- */
 class ParserIntegrityRemediationTest extends TestCase
 {
-    // np-cr-001: an ASCII-separated hostile row is counted by the budget and
-    // rejected instead of flowing into the pipeline
     public function testSpaceSeparatedRowHitsTokenBudget(): void
     {
         $this->expectException(\LengthException::class);
@@ -30,11 +23,7 @@ class ParserIntegrityRemediationTest extends TestCase
         (new Parser())->parse(str_repeat('AB ', 70000) . 'Smith');
     }
 
-    // np-cr-001: multibyte Unicode spaces (NBSP) ride inside counted tokens,
-    // so the byte budget cannot see them; the capped preg_split in
-    // isUniformUpperInput bounds the real split cost instead (200k-token row
-    // completes — the uncapped split would materialize all 200k tokens with
-    // three Unicode scans each)
+    // NBSP escapes the ASCII prefilter; capped Unicode splitting must bound the work.
     public function testNbspSeparatedRowStaysBounded(): void
     {
         $name = (new Parser())->parse(str_repeat("AB\xC2\xA0", 200000) . ', Smith');
@@ -43,8 +32,7 @@ class ParserIntegrityRemediationTest extends TestCase
         $this->assertStringStartsWith('Ab', $name->getLastname());
     }
 
-    // np-cr-001 + np-cr-003: ASCII control separators (VT) are stripped by
-    // normalize before the budget runs, so they read as one token
+    // Normalization removes VT before the token budget runs.
     public function testVerticalTabIsStrippedByNormalize(): void
     {
         $name = (new Parser())->parse("AB\x0BAB");
@@ -52,8 +40,6 @@ class ParserIntegrityRemediationTest extends TestCase
         $this->assertSame('Abab', $name->getFirstname());
     }
 
-    // np-cr-007 carve-out: an invalid-UTF-8 whitespace set keeps the legacy
-    // bytewise contract instead of destroying configured separators
     public function testInvalidUtf8WhitespaceKeepsBytewiseContract(): void
     {
         $name = (new Parser())->setWhitespace("\xFF")->parse("John\xFFSmith");
@@ -62,8 +48,6 @@ class ParserIntegrityRemediationTest extends TestCase
         $this->assertSame('Smith', $name->getLastname());
     }
 
-    // np-cr-011: the cheaper mask path shields identically (asymmetric,
-    // symmetric, nested)
     public function testMaskingShieldsNicknameCommas(): void
     {
         $name = (new Parser())->parse('John (Bob, Jr) Doe');
@@ -78,8 +62,6 @@ class ParserIntegrityRemediationTest extends TestCase
         $this->assertSame('Doe', $quoted->getLastname());
     }
 
-    // np-cr-012: hostile delimiter pairs (comma, NUL, whitespace, controls)
-    // are ignored, so the structural comma split survives them
     public function testHostileDelimiterPairsAreIgnored(): void
     {
         $parser = (new Parser())->setNicknameDelimiters([
@@ -103,9 +85,6 @@ class ParserIntegrityRemediationTest extends TestCase
         $this->assertSame('Smith', $name->getLastname());
     }
 
-    // np-cr-007: SCRUB policy, invalid bytes are replaced deterministically
-    // (mb_scrub substitutes '?'), so the row parses instead of degrading per
-    // call site
     public function testInvalidUtf8IsScrubbedDeterministically(): void
     {
         $name = (new Parser())->parse("John\xFFSmith");
@@ -126,14 +105,11 @@ class ParserIntegrityRemediationTest extends TestCase
         foreach ($name->getParts() as $part) {
             $this->assertNotSame('-', is_string($part) ? $part : $part->getValue());
         }
-        // the attested placeholder set is a named predicate (np-o-04)
         $this->assertTrue(Text::isCredentialPlaceholder('Unknown'));
         $this->assertFalse(Text::isCredentialPlaceholder('-'));
         $this->assertFalse(Text::isCredentialPlaceholder('John'));
     }
 
-    // np-cr-014 acceptance (documented otherwise): the surname segment never
-    // enters the given-side purge, so Unknown stays a lastname here
     public function testSurnameUnknownSurvivesCommaCredential(): void
     {
         $name = (new Parser())->parse('John Unknown, MD');
@@ -143,8 +119,6 @@ class ParserIntegrityRemediationTest extends TestCase
         $this->assertSame('MD', $name->getSuffix());
     }
 
-    // np-cr-015: past the 4096-entry table the key cache degrades gradually
-    // (oldest quarter evicted) instead of dropping wholesale, and stays exact
     public function testKeyCacheStaysExactPastEviction(): void
     {
         for ($i = 0; $i < 5000; $i++) {
@@ -164,8 +138,6 @@ class ParserIntegrityRemediationTest extends TestCase
         $this->assertSame('john', Text::key('John.'));
     }
 
-    // np-cr-016: a max-size interior token classifies identically (memoized
-    // single analysis, same observable outcome)
     public function testLongTokenClassifiesIdentically(): void
     {
         $name = (new Parser())->parse(str_repeat('A', 2000));
@@ -174,7 +146,6 @@ class ParserIntegrityRemediationTest extends TestCase
         $this->assertSame('', $name->getLastname());
     }
 
-    // np-cr-018: jr/sr promote exactly like junior/senior
     public function testGenerationalAbbreviationsPromote(): void
     {
         foreach (['Smith, Jr', 'Smith, Sr'] as $input) {
@@ -189,14 +160,12 @@ class ParserIntegrityRemediationTest extends TestCase
         $this->assertSame('Sr', (new Parser())->parse('Smith, Sr')->getFirstname());
         $this->assertSame('Junior', (new Parser())->parse('Smith, Junior')->getFirstname());
 
-        // a side that already carries a given name keeps the token as suffix
         $withGiven = (new Parser())->parse('Smith, John Jr');
 
         $this->assertSame('John', $withGiven->getFirstname());
         $this->assertSame('Jr', $withGiven->getSuffix());
     }
 
-    // np-cr-025: the credential classification is a named enum, not magic ints
     public function testTokenCredentialClassValues(): void
     {
         $this->assertSame(0, TokenCredentialClass::Name->value);
@@ -204,8 +173,6 @@ class ParserIntegrityRemediationTest extends TestCase
         $this->assertSame(2, TokenCredentialClass::UnknownCandidate->value);
     }
 
-    // np-o-02: invalid UTF-8 plus comma plus opener splits deterministically
-    // (unmasked) instead of shielding/exposing the wrong comma
     public function testInvalidUtf8CommaRowSplitsDeterministically(): void
     {
         $name = (new Parser())->setWhitespace("\xFF")->parse("John\xFF(Bob, Jr");
@@ -215,7 +182,6 @@ class ParserIntegrityRemediationTest extends TestCase
         $this->assertSame('Jr', $name->getSuffix());
     }
 
-    // np-o-03: NULs are stripped, preserving the placeholder invariant
     public function testNulBytesAreStripped(): void
     {
         $name = (new Parser())->parse("Jo\x00hn Smith");
@@ -224,8 +190,6 @@ class ParserIntegrityRemediationTest extends TestCase
         $this->assertSame('Smith', $name->getLastname());
     }
 
-    // np-o-04: drops stay distinguishable in getParts() (noise gone with an
-    // anchor, preserved without one)
     public function testNoiseAccountingInParts(): void
     {
         $anchored = (new Parser())->parse('Smith, Jane, MD, -');
@@ -246,8 +210,6 @@ class ParserIntegrityRemediationTest extends TestCase
         $this->assertContains('-', $unanchoredValues);
     }
 
-    // np-o-13: all four pipeline sites build from the same factories, so the
-    // single-segment pipeline has exactly the default stage sequence
     public function testDefaultPipelineStageSequence(): void
     {
         $classes = array_map(
@@ -270,8 +232,6 @@ class ParserIntegrityRemediationTest extends TestCase
         );
     }
 
-    // np-o-14: a custom list applies to the single-segment path only; the
-    // comma path keeps the centralized default segment behavior
     public function testCustomMappersDoNotAffectCommaPath(): void
     {
         $parser = (new Parser())->setMappers([
@@ -290,8 +250,6 @@ class ParserIntegrityRemediationTest extends TestCase
         $this->assertSame('', $plain->getSuffix());
     }
 
-    // np-cr-017: a >4KB row keeps its nickname shielding (bounded byte scan,
-    // no unshielded-split fallback on the single-byte path)
     public function testLongRowKeepsNicknameShielding(): void
     {
         $name = (new Parser())->parse('Smith, John ' . str_repeat('x', 5000) . ' (Bob, Jr)');
@@ -302,7 +260,6 @@ class ParserIntegrityRemediationTest extends TestCase
         $this->assertStringStartsWith('John', $name->getFirstname());
     }
 
-    // np-cr-027: whole-input uniform-upper helper semantics
     public function testIsUniformUpperTokens(): void
     {
         $this->assertTrue(Text::isUniformUpperTokens(['JOHN', 'DOE-2']));
@@ -314,7 +271,6 @@ class ParserIntegrityRemediationTest extends TestCase
         $this->assertFalse(Text::isUniformUpperTokens(['中文']));
     }
 
-    // np-cr-027 wiring: mixed-case input is not uniform-upper at parse level
     public function testUniformUpperGateAtParseLevel(): void
     {
         $upper = (new Parser())->parse('JOHN SMITH');

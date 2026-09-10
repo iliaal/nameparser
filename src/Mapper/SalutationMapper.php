@@ -15,8 +15,7 @@ use Iliaal\NameParser\Text;
 class SalutationMapper extends AbstractMapper
 {
     /**
-     * The article that may sit between the start of the name and an honorific
-     * ("The Rev. Mark Williams"). Anything else ends the leading run.
+     * Only the article may precede a leading honorific.
      */
     private const string LEADING_ARTICLE = 'the';
 
@@ -41,12 +40,9 @@ class SalutationMapper extends AbstractMapper
     private array $spanDelimiters;
 
     /**
-     * Salutation keys that are also real personal names, so reading one as an
-     * honorific costs a name part. Attested in the bundled NPI corpus: Lord (3
-     * surnames), Master (1 surname), Hon (1 given name). Dame, Lady and Pastor
-     * are unattested there but collide in other populations (Pastor is both a
-     * Spanish surname and a given name). Drives the requireRemainder guard
-     * below, and the leading-title note in Confidence.
+     * Name collisions attested in NPI data include Lord, Master, and Hon;
+     * Dame, Lady, and Pastor collide in other populations. Used by the
+     * remainder guard and confidence assessment.
      */
     public const array NAME_COLLIDING_KEYS = [
         'dame' => true, 'hon' => true, 'lady' => true,
@@ -54,10 +50,6 @@ class SalutationMapper extends AbstractMapper
     ];
 
     /**
-     * Multi-word salutation patterns ("the honorable", "his honour"), split
-     * once. Single-word salutations are handled by the exact-match check in
-     * matchAt(), so only these need the subset loop.
-     *
      * @var list<array{array<int, string>, string}>
      */
     private array $multiWord = [];
@@ -68,19 +60,14 @@ class SalutationMapper extends AbstractMapper
     private array $multiWordStarts = [];
 
     /**
-     * Multi-word patterns indexed by first key, longest first, so matchAt()
-     * only tries patterns that can open at the current token instead of
-     * scanning every pattern per token.
+     * Index by first key, longest match first.
      *
      * @var array<string, list<array{array<int, string>, string}>>
      */
     private array $multiWordByFirst = [];
 
     /**
-     * Lazily-built decoration-analyzer pair for analyzeRemainder() (shared
-     * factory construction); built once per mapper instance instead of two
-     * throwaway mappers per call. The inputs are constructor-fixed, so the
-     * pair never goes stale.
+     * Constructor-fixed inputs make the cached analyzer pair safe to reuse.
      *
      * @var array{suffix: SuffixMapper, nickname: NicknameMapper}|null
      */
@@ -160,11 +147,7 @@ class SalutationMapper extends AbstractMapper
 
             [$part, $consumed] = $this->matchAt($parts, $input);
 
-            // a connector joining two titles is part of the honorific, not a
-            // given name ("Mr. and Mrs. Brad Smith" keeps Brad as the first
-            // name). It needs a title on both sides, so a stray "and" is never
-            // absorbed, and it does not count toward the scan budget because it
-            // is not itself a title.
+            // Connectors require a title on both sides and do not consume the title budget.
             if (is_string($part)
                 && isset($this->connectors[$this->getKey($part)])
                 && $mapped !== []
@@ -188,22 +171,15 @@ class SalutationMapper extends AbstractMapper
                 }
             }
 
-            // honorifics lead the name, so only a bare article may sit between
-            // the start and a title ("The Rev. Mark Williams"). Once a real name
-            // token is seen, a later dictionary hit belongs to the person rather
-            // than to a title, so "John Lord Smith Jr" keeps Lord as a middle
-            // name. An explicit maxSalutationIndex is the caller asserting that
-            // titles do appear further in ("Francis Mr"), so it opts out.
+            // Titles normally form a leading run; an explicit maxSalutationIndex
+            // allows later titles. Preserve Lord in "John Lord Smith Jr".
             if ($this->maxIndex <= 0
                 && is_string($part)
                 && $this->getKey($part) !== self::LEADING_ARTICLE) {
                 break;
             }
 
-            // A terminal title/name collision after another mapped title is the
-            // only available surname ("Mr. and Mrs. Lord"). The comma form
-            // independently asserts that its segment must retain a surname.
-            // Unambiguous titles remain salutations in both paths.
+            // A final colliding title may be the only surname: "Mr. and Mrs. Lord".
             if (isset(self::NAME_COLLIDING_KEYS[$this->getKey($current)])
                 && ($this->requireRemainder || end($mapped) instanceof Salutation)) {
                 $remainderState ??= $this->analyzeRemainder($parts, $input + $consumed);
@@ -225,21 +201,12 @@ class SalutationMapper extends AbstractMapper
     }
 
     /**
-     * A conjunction that the honorific did not absorb belongs to nobody: it is
-     * neither a title nor a name, so title-casing it into a given or middle name
-     * ("Andrew and Sally Smith" reporting the middle name "And") is wrong under
-     * every reading. A title directly after such a conjunction addresses a
-     * second person ("Mr. Andrew and Mrs Sally Smith"), so it is not this
-     * person's name part either.
+     * Unabsorbed connectors and their following titles remain visible as
+     * Ignored parts without being exported as names. This does not identify
+     * the second person or reassign their given name.
      *
-     * Both are marked Ignored, which no getter exports, rather than dropped, so
-     * the text stays visible in Name::getParts(). This does not identify the
-     * second person; the given name beside the title is left where it lands.
-     *
-     * The title rule requires the preceding conjunction on purpose. Several
-     * salutation keys double as credentials ("ms" is both Ms. and MS), and this
-     * mapper runs before SuffixMapper in the single-segment pipeline, so a blanket
-     * mid-stream title rule would swallow the credential in "Jane Doe MS".
+     * Require a connector before ignoring a title: Ms./MS also denotes a
+     * credential, and SuffixMapper has not yet run.
      *
      * @param  PartArray  $parts
      * @return PartArray
@@ -249,11 +216,7 @@ class SalutationMapper extends AbstractMapper
         $afterConnector = false;
 
         foreach ($parts as $index => $part) {
-            // a nickname between the connector and the title is transparent:
-            // "Mr. and (Bob) Mrs. Smith" still has an unattributed Mrs., which
-            // must not be title-cased into the first name. Applies to already
-            // extracted Nickname parts and raw self-contained span tokens; the
-            // span test only matters while a connector is pending.
+            // Nicknames between a connector and title do not break their association.
             if ($index >= $start && $part instanceof Nickname) {
                 continue;
             }
@@ -293,9 +256,7 @@ class SalutationMapper extends AbstractMapper
     }
 
     /**
-     * a dictionary title that is not also a real personal name, so reading it as
-     * a second addressee's honorific costs nothing ("Lord" and the other
-     * NAME_COLLIDING_KEYS stay name parts)
+     * Exclude colliding personal names when identifying an unattributed title.
      *
      * @param  PartArray  $parts
      */
@@ -357,17 +318,12 @@ class SalutationMapper extends AbstractMapper
         $decorated = array_slice($parts, $start);
 
         if ($this->suffixes !== [] || $this->nicknameDelimiters !== []) {
-            // lazily-reused analyzer pair (shared factory construction): the
-            // same suffix-nickname-suffix order as before, without two
-            // throwaway mappers and a triple map per call
             $this->analyzerPair ??= self::decorationAnalyzers($this->suffixes, $this->nicknameDelimiters);
             $decorated = $this->analyzerPair['suffix']->map($decorated);
             $decorated = $this->analyzerPair['nickname']->map($decorated);
             $decorated = $this->analyzerPair['suffix']->map($decorated);
         }
 
-        // multi-word match spans precomputed once per call instead of
-        // re-scanning every pattern at every token in isSalutationTokenAt()
         $multiWordCover = $this->multiWordSpanCover($decorated);
 
         $lastRawNameIndex = -1;
@@ -397,10 +353,7 @@ class SalutationMapper extends AbstractMapper
     }
 
     /**
-     * Indexes of tokens covered by a multi-word salutation match, computed in
-     * one forward pass. Equivalent to the per-token offset loop it replaces:
-     * a token is covered exactly when some pattern matches a span containing
-     * it, and matchAt() finds the same longest-first match the loop would.
+     * Precompute multi-word salutation coverage in one forward pass.
      *
      * @param  PartArray  $parts
      * @return array<int, true>
@@ -444,9 +397,8 @@ class SalutationMapper extends AbstractMapper
 
         $key = $this->getKey($current);
         [$part] = $this->matchAt($parts, $index);
-        // An isolated colliding token can be the shared surname after a joint
-        // title. It is unambiguously a title only within a multi-word match or
-        // when a connector explicitly introduces it as the next title.
+        // A colliding token may be the shared surname; a multi-word match or
+        // preceding connector is needed to identify it as another title.
         if ($part instanceof Salutation && ! isset(self::NAME_COLLIDING_KEYS[$key])) {
             return true;
         }
@@ -478,10 +430,6 @@ class SalutationMapper extends AbstractMapper
     }
 
     /**
-     * check if the given subset matches the given keys entry by entry,
-     * which means word by word, except that we first need to key-ify
-     * the subset words
-     *
      * @param  array<int, string>  $keys
      * @param  PartArray  $subset
      *
@@ -489,9 +437,7 @@ class SalutationMapper extends AbstractMapper
      */
     private function isMatchingSubset(array $keys, array $subset): bool
     {
-        // array_slice() returns fewer parts than the pattern near the end of the
-        // token list; without this a one-token tail would match the first key of
-        // a multi-word salutation ("Smith, Her" -> "Her Honour").
+        // A truncated tail must not match a longer title: Her is not Her Honour.
         if (count($subset) !== count($keys)) {
             return false;
         }

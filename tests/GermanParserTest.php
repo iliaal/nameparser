@@ -79,8 +79,6 @@ class GermanParserTest extends TestCase
         $name = $parser->parse($input);
 
         $this->assertInstanceOf(Name::class, $name);
-        // assertSame (not assertEquals): the rows are written in the canonical
-        // getAll() key order, so a key reorder or type drift fails.
         $this->assertSame($expectation, $name->getAll());
     }
 
@@ -110,9 +108,7 @@ class GermanParserTest extends TestCase
         $this->assertSame('Herr', $name->getSalutation());
         $this->assertSame('Hans', $name->getFirstname());
         $this->assertSame('', $name->getSuffix());
-        // MD is not in the German dictionary, so it stays in the name stream
-        // and title-cases into the surname: pin the exact landing rather
-        // than a case-insensitive contains that passes on any placement.
+        // MD is absent from the German dictionary, so it remains in the surname.
         $this->assertSame('Schmidt Md', $name->getLastname());
         $this->assertSame('', $name->getMiddlename());
     }
@@ -143,8 +139,6 @@ class GermanParserTest extends TestCase
 
     public function testGermanJointHonorificConnector(): void
     {
-        // "und" comes from German::getConnectors(); without it the conjunction
-        // was title-cased into the first name and Frau exported as middle name
         $name = (new Parser([new German()]))->parse('Herr und Frau Schmidt');
 
         $this->assertSame('Herr und Frau', $name->getSalutation());

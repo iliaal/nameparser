@@ -22,9 +22,7 @@ class FirstnameMapper extends AbstractMapper
     {
         $parts = $this->normalizeParts($parts);
 
-        // an earlier mapper can empty the array (e.g. NicknameMapper drops a lone
-        // unmatched delimiter token); nothing to map then, and indexing [0] would
-        // hand a null to handleSinglePart()
+        // Earlier mappers may remove every token.
         if ($parts === []) {
             return $parts;
         }
@@ -82,10 +80,8 @@ class FirstnameMapper extends AbstractMapper
     }
 
     /**
-     * index to begin the firstname search. After a leading honorific run
-     * (including a bare "The" before "Rev."), start past that run. When a
-     * salutation appears mid-stream after real name tokens, start at 0 so
-     * those tokens are not dropped from getters.
+     * Skip leading honorifics, but preserve real name tokens before mid-stream
+     * salutations from custom pipelines.
      *
      * @param  PartArray  $parts
      */

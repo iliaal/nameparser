@@ -10,17 +10,13 @@ class PerformanceTest extends TestCase
 {
     private const float MAX_SECONDS = 1.5;
 
-    // 2x input at linear scaling costs 2x time; 2.5x allows ~25% scheduling
-    // noise while still failing a persistently superlinear pipeline. The old
-    // 3.0x blessed ~1.5x creep per doubling, letting quadratic drift merge.
+    // Linear doubling costs 2x CPU; allow 25% noise without accepting persistent superlinear scaling.
     private const float MAX_SCALING_RATIO = 2.5;
 
     private const int SCALING_SAMPLES = 3;
 
-    // Fixed-corpus throughput floor: order-of-magnitude collapse trips here
-    // even when the scaling ratio stays linear (a uniformly 10x slowdown is
-    // still linear). Sized ~4x below measured throughput (~8000 names/sec)
-    // so loaded CI hosts do not flake a healthy pipeline.
+    // An absolute floor catches uniformly slow but linear code. The 2000 names/s
+    // floor is 4x below measured throughput to tolerate loaded CI hosts.
     private const float MIN_CORPUS_NAMES_PER_SECOND = 2000.0;
 
     private const int MAX_INPUT_BYTES = 1024 * 1024;
@@ -61,8 +57,6 @@ class PerformanceTest extends TestCase
 
     public function testNestedNicknameDepthRemainsBoundedAtBatchScale(): void
     {
-        // median CPU time over samples: a single wall-clock sample flakes on
-        // shared CI, while the median only trips on a persistent slowdown.
         $input = str_repeat('( ', 16000) . str_repeat(') ', 16000) . 'Smith';
         $elapsed = $this->medianCpuSeconds(
             static function () use ($input): void {
@@ -157,17 +151,12 @@ class PerformanceTest extends TestCase
         $name = (new Parser())->parse($input);
 
         $this->assertSame($input, $name->getSource());
-        // the exact-budget input parses to fields, not just a source echo:
-        // the token stream still yields a firstname and a lastname.
         $this->assertSame('A', $name->getFirstname());
         $this->assertSame('A', $name->getLastname());
     }
 
     public function testFixedCorpusThroughputFloor(): void
     {
-        // realistic mixed batch (joint, comma, credential, nickname,
-        // particle, multibyte rows); median CPU time over samples so a
-        // loaded CI host does not flake a healthy pipeline.
         $corpus = [
             'James Norrington',
             'Mr. and Mrs. Brad Smith',
@@ -257,9 +246,7 @@ class PerformanceTest extends TestCase
     }
 
     /**
-     * The sizes are operation counts (tokens), not bytes, so the ratio pins
-     * work scaling: doubling the tokens must not more than 2.5x the CPU.
-     * Samples interleave small/large and take the median to starve flakes.
+     * Measure token-count scaling with interleaved small/large CPU samples.
      *
      * @param  callable(int): string  $input
      */
@@ -329,9 +316,7 @@ class PerformanceTest extends TestCase
     }
 
     /**
-     * Median CPU time over repeated runs of arbitrary work: CPU time (not
-     * wall clock) so scheduling jitter on shared CI cannot flake the gate,
-     * and the median so one slow sample cannot fail a healthy pipeline.
+     * Use median CPU time to reduce scheduling jitter and isolated slow samples.
      */
     private function medianCpuSeconds(callable $work, int $samples = 3): float
     {

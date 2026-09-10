@@ -120,8 +120,7 @@ class NicknameMapperTest extends AbstractMapperTestCase
                     'Roussimoff',
                 ],
             ],
-            // a leading quote with no closing quote later is an elided particle,
-            // not a nickname opener: leave the token verbatim
+            // An unmatched leading quote may be an elided particle.
             [
                 'input' => [
                     'Gerard',
@@ -146,7 +145,6 @@ class NicknameMapperTest extends AbstractMapperTestCase
                     'Smith',
                 ],
             ],
-            // lone delimiter tokens clean to empty and must not emit empty Nicknames
             [
                 'input' => [
                     'John',

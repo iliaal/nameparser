@@ -19,10 +19,6 @@ class Name
     private const string PARTS_NAMESPACE = 'Iliaal\NameParser\Part';
 
     /**
-     * Short export/isType names to part classes. Dispatching on ::class keeps
-     * renames and typos visible to static analysis; unknown strings still fall
-     * back to the namespace lookup so custom part types keep working.
-     *
      * @var array<string, class-string<AbstractPart>>
      */
     private const array TYPE_MAP = [
@@ -43,8 +39,7 @@ class Name
     protected array $parts = [];
 
     /**
-     * the normalized input this name was parsed from, retained so the advisory
-     * confidence signal can be derived from the same string the parser saw
+     * Retain original casing for confidence assessment.
      */
     protected ?string $source = null;
 
@@ -64,27 +59,14 @@ class Name
     protected ?array $confidenceTokens = null;
 
     /**
-     * Parser nickname-delimiter configuration, retained so getConfidence()
-     * decorates exactly like the parse did instead of defaulting.
-     *
      * @var array<string, string>|null
      */
     protected ?array $confidenceNicknameDelimiters = null;
 
-    /**
-     * Parser whitespace configuration, retained so getConfidence() splits
-     * exactly like the parse did instead of defaulting.
-     */
     protected ?string $confidenceWhitespace = null;
 
     /**
-     * constructor takes the array of parts this name consists of
-     *
-     * raw string parts are retained in getParts() but ignored by every getter
-     * and by export(): the getters only ever read AbstractPart instances.
-     *
-     * The trailing confidence parameters are all optional and additive: older
-     * call sites constructing with three or fewer arguments are unaffected.
+     * Raw strings remain in getParts(); getters and export() only read AbstractPart instances.
      *
      * @param  array<int, AbstractPart|string>|null  $parts
      * @param  array<int|string, string>|null  $confidenceSuffixes
@@ -135,8 +117,6 @@ class Name
     }
 
     /**
-     * get the parts this name consists of
-     *
      * @return array<int, AbstractPart|string>
      */
     public function getParts(): array
@@ -271,8 +251,6 @@ class Name
      */
     public function getAll(bool $format = false): array
     {
-        // static key => first-class-callable map: renames and typos fail at
-        // analysis time instead of at runtime via dynamic method strings
         $getters = [
             'salutation' => $this->getSalutation(...),
             'firstname' => $this->getFirstname(...),
@@ -321,49 +299,31 @@ class Name
         return implode(' ', $parts);
     }
 
-    /**
-     * get the first name
-     */
     public function getFirstname(): string
     {
         return $this->export('Firstname');
     }
 
-    /**
-     * get the last name
-     */
     public function getLastname(bool $pure = false): string
     {
         return $this->export('Lastname', $pure);
     }
 
-    /**
-     * get the last name prefix
-     */
     public function getLastnamePrefix(): string
     {
         return $this->export('LastnamePrefix');
     }
 
-    /**
-     * get the initials
-     */
     public function getInitials(): string
     {
         return $this->export('Initial');
     }
 
-    /**
-     * get the suffix(es)
-     */
     public function getSuffix(): string
     {
         return $this->export('Suffix');
     }
 
-    /**
-     * get the salutation(s)
-     */
     public function getSalutation(): string
     {
         return $this->export('Salutation');
@@ -411,8 +371,6 @@ class Name
     {
         $groups = $this->getSalutationGroups();
 
-        // groups only split at a connector, so a second group is exactly the
-        // condition isJoint() reports
         if (count($groups) < 2) {
             return null;
         }
@@ -423,8 +381,7 @@ class Name
             $parts[] = clone $salutation;
         }
 
-        // LastnamePrefix extends Lastname, so a particle surname comes across
-        // whole and in order ("van der Berg")
+        // LastnamePrefix inherits Lastname, so surname particles are included.
         foreach ($this->parts as $part) {
             if ($part instanceof Lastname) {
                 $parts[] = clone $part;
@@ -439,10 +396,7 @@ class Name
             $this->confidenceWhitespace,
         );
 
-        // the partner derives from the same parse, so it shares the
-        // source-backed confidence input; guarded for manually constructed
-        // Names (no source or tokens recorded), which keep the reconstruction
-        // fallback documented on getConfidence()
+        // Preserve confidence provenance; manually constructed names keep their fallback.
         if ($this->source !== null || $this->confidenceTokens !== null) {
             $partner->setSource($this->source ?? (string) $this, $this->confidenceTokens);
         }
@@ -451,10 +405,7 @@ class Name
     }
 
     /**
-     * the salutation parts grouped at connector boundaries, one group per
-     * person addressed. Parts that normalize to an empty string are dropped for
-     * the same reason export() drops them, and a group left empty by that is
-     * dropped with them.
+     * Group at connector boundaries, omitting empty parts and groups.
      *
      * @return list<list<Salutation>>
      */
@@ -503,9 +454,6 @@ class Name
         return count($this->getSalutationGroups()) >= 2;
     }
 
-    /**
-     * get the nick name(s)
-     */
     public function getNickname(bool $wrap = false): string
     {
         $nickname = $this->export('Nickname');
@@ -517,17 +465,11 @@ class Name
         return $nickname;
     }
 
-    /**
-     * get the middle name(s)
-     */
     public function getMiddlename(): string
     {
         return $this->export('Middlename');
     }
 
-    /**
-     * helper method used by getters to extract and format relevant name parts
-     */
     protected function export(string $type, bool $strict = false): string
     {
         $matched = [];
@@ -535,8 +477,6 @@ class Name
         foreach ($this->parts as $part) {
             if ($part instanceof AbstractPart && $this->isType($part, $type, $strict)) {
                 $normalized = $part->normalize();
-                // skip empty normalized values so a blank token cannot inject a
-                // stray space into given_name / full_name joins
                 if ($normalized !== '') {
                     $matched[] = $normalized;
                 }
@@ -546,9 +486,6 @@ class Name
         return implode(' ', $matched);
     }
 
-    /**
-     * helper method to check if a part is of the given type
-     */
     protected function isType(AbstractPart $part, string $type, bool $strict = false): bool
     {
         $className = self::TYPE_MAP[$type] ?? self::PARTS_NAMESPACE . '\\' . $type;

@@ -6,10 +6,6 @@ use Iliaal\NameParser\Parser;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
-/**
- * Edge-case regressions: Unicode handling, multi-segment comma input, empty
- * nickname rendering, custom whitespace, and salutation-index overflow.
- */
 class RobustnessTest extends TestCase
 {
     public function testUnicodeInitialIsNotCorrupted(): void
@@ -46,9 +42,7 @@ class RobustnessTest extends TestCase
      */
     public static function caselessScriptProvider(): array
     {
-        // input surname, caseless given name, expected suffix: caseless
-        // scripts have no upper/lower case, so the all-uppercase split gate
-        // must not fire and the given name stays whole with no bogus initials.
+        // Input surname, caseless given name, expected suffix.
         return [
             'han' => ['Wang', "\u{674E}\u{660E}", ''],
             'hebrew' => ['Cohen', "\u{05DC}\u{05D9}", ''],
@@ -86,8 +80,6 @@ class RobustnessTest extends TestCase
 
         $this->assertSame('John', $name->getFirstname());
         $this->assertSame('Smith', $name->getLastname());
-        // full suffix string: contains-asserts pass on reordered/duplicated
-        // credentials ('PhD MD', 'MD MD PhD'), so the order is pinned exactly.
         $this->assertSame('MD PhD', $name->getSuffix());
     }
 
@@ -145,7 +137,6 @@ class RobustnessTest extends TestCase
         $this->assertSame('Hooft', $name->getLastname());
         $this->assertSame('', $name->getNickname());
         $this->assertSame('', $name->getInitials());
-        // the elided particle survives verbatim; the pipeline title-cases it to 'T
         $this->assertSame("'T", $name->getMiddlename());
     }
 
@@ -160,8 +151,7 @@ class RobustnessTest extends TestCase
 
     public function testMultibyteWhitespaceDoesNotCorruptSharedByteGlyphs(): void
     {
-        // U+3000 shares lead bytes with other CJK punctuation; a bytewise
-        // pattern would eat those bytes out of unrelated glyphs
+        // U+3000 shares bytes with other glyphs; a bytewise class would corrupt them.
         $parser = (new Parser())->setWhitespace("\u{3000}");
         $name = $parser->parse("\u{7530}\u{4E2D}\u{3000}Smith\u{3002}X");
 
@@ -172,8 +162,7 @@ class RobustnessTest extends TestCase
 
     public function testInvalidUtf8WhitespaceFallsBackToBytewiseWithoutWarnings(): void
     {
-        // /u cannot compile a pattern containing the raw byte; the pattern
-        // drops to bytewise semantics instead of warning per parse
+        // Invalid UTF-8 whitespace cannot compile under /u; retain bytewise matching.
         $parser = (new Parser())->setWhitespace("\xFF");
         $name = $parser->parse("John\xFFSmith");
 
@@ -186,11 +175,7 @@ class RobustnessTest extends TestCase
      */
     public static function invalidUtf8BodyProvider(): array
     {
-        // input, expected firstname, expected lastname: under the default
-        // config the SCRUB policy replaces invalid bytes up front (mb_scrub
-        // renders them as '?'), so the byte lands deterministically in its
-        // field instead of degrading per call site, and phpunit's
-        // failOnWarning proves the parse stays quiet.
+        // Input, expected firstname, expected lastname; mb_scrub uses '?' for invalid bytes.
         return [
             'invalid byte in comma given name' => ["Smith, J\xFFhn", 'J?Hn', 'Smith'],
             'invalid byte leading the given name' => ["J\xFFhn Smith", 'J?Hn', 'Smith'],
@@ -211,7 +196,6 @@ class RobustnessTest extends TestCase
 
     public function testInvalidUtf8NicknameDelimiterIsIgnoredWithoutWarnings(): void
     {
-        // failOnWarning turns the per-token preg compile warning into a failure
         $parser = (new Parser())->setNicknameDelimiters(["\xC3" => "\xC3"]);
         $name = $parser->parse('John Smith');
 
@@ -261,8 +245,6 @@ class RobustnessTest extends TestCase
 
     public function testEmptyNicknameCloserIsIgnoredWithoutWarnings(): void
     {
-        // empty closer cannot close a span; drop the pair and fall back to no-op
-        // nickname extraction rather than swallowing the token forever
         $parser = (new Parser())->setNicknameDelimiters(['(' => '']);
         $name = $parser->parse('John (Bob) Smith');
 
@@ -283,8 +265,6 @@ class RobustnessTest extends TestCase
 
     public function testMaxSalutationIndexBeyondPartsDoesNotWarn(): void
     {
-        // phpunit.xml sets failOnWarning, so an undefined-array-key warning here
-        // fails the test rather than passing silently.
         $parser = new Parser();
         $parser->setMaxSalutationIndex(10);
         $name = $parser->parse('Mr');
@@ -298,12 +278,6 @@ class RobustnessTest extends TestCase
         $this->assertSame('Smith', (new Parser())->parse('John (Bob Smith')->getLastname());
     }
 
-    /**
-     * A lone nickname delimiter is stripped to nothing, leaving no parts. The
-     * parser must return an empty Name rather than throw, so one malformed cell
-     * does not abort a batch import. failOnWarning also catches the undefined
-     * array-key warning that preceded the TypeError.
-     */
     #[DataProvider('loneDelimiterProvider')]
     public function testLoneDelimiterTokenDoesNotCrash(string $input): void
     {
@@ -328,12 +302,6 @@ class RobustnessTest extends TestCase
         ];
     }
 
-    /**
-     * a degenerate whole-string input (blank or bare punctuation) yields an
-     * all-empty Name: every toArray() key is present as '' and nothing warns or
-     * throws, so one malformed cell cannot abort a batch import (failOnWarning
-     * turns any stray warning into a failure).
-     */
     #[DataProvider('degenerateInputProvider')]
     public function testDegenerateInputYieldsAllEmptyName(string $input): void
     {
@@ -377,11 +345,6 @@ class RobustnessTest extends TestCase
         $this->assertSame('', $name->getFirstname());
     }
 
-    /**
-     * A one-token tail must not partial-match the first word of a multi-word
-     * salutation pattern ("her honour"); "Her" stays a name, not a salutation,
-     * even with the salutation scan reaching the final token.
-     */
     public function testPartialMultiWordSalutationIsNotMatched(): void
     {
         $parser = new Parser();
@@ -392,15 +355,10 @@ class RobustnessTest extends TestCase
         $this->assertSame('Her', $name->getFirstname());
         $this->assertSame('Smith', $name->getLastname());
 
-        // the full multi-word salutation still matches
         $full = $parser->parse('Her Honour Mary Smith');
         $this->assertSame('Her Honour', $full->getSalutation());
     }
 
-    /**
-     * an empty whitespace set collapses nothing and must not emit an E_WARNING
-     * from a degenerate "/[]+/" pattern (failOnWarning would catch it)
-     */
     public function testEmptyWhitespaceSetDoesNotWarn(): void
     {
         $name = (new Parser())->setWhitespace('')->parse('John Smith');
@@ -421,10 +379,6 @@ class RobustnessTest extends TestCase
         ];
     }
 
-    /**
-     * a closing delimiter with glued trailing punctuation still closes the
-     * span; the unclosed-opener revert must not leave "Bob)" as the surname
-     */
     #[DataProvider('gluedCloserPunctuationProvider')]
     public function testCloserWithGluedPunctuationClosesSpan(string $input, string $last): void
     {
@@ -446,11 +400,6 @@ class RobustnessTest extends TestCase
         ];
     }
 
-    /**
-     * the closer-bearing token of a trailing span keys as a suffix ("Jr)"),
-     * but consuming it would orphan the opener; the nickname survives whole
-     * and the surname stays the surname
-     */
     #[DataProvider('suffixCollidingSpanTailProvider')]
     public function testTrailingSpanEndingInSuffixCollidingWordStaysNickname(
         string $input,
@@ -467,17 +416,13 @@ class RobustnessTest extends TestCase
 
     public function testSelfBalancedQuotedTokenDoesNotCloseElidedParticle(): void
     {
-        // 'Genius' closes itself; its tail quote must not serve as the closer
-        // for the elided-particle apostrophe in 't, or the whole row degrades
-        // to nickname parts
+        // 'Genius' closes itself, not the apostrophe in 't.
         $name = (new Parser())->parse("'t Hooft, Gerard 'Genius'");
 
         $this->assertSame('Gerard', $name->getFirstname());
         $this->assertSame("'T Hooft", $name->getLastname());
         $this->assertSame('Genius', $name->getNickname());
 
-        // the space form matches its no-nickname baseline ("Gerard 't Hooft"):
-        // the elided particle survives as a middle name there
         $spaceForm = (new Parser())->parse("Gerard 't Hooft 'Genius'");
 
         $this->assertSame('Gerard', $spaceForm->getFirstname());
@@ -508,8 +453,6 @@ class RobustnessTest extends TestCase
 
     public function testInteriorLetterlessTokenKeepsOldSeparatorReading(): void
     {
-        // only a trailing placeholder is skipped; an interior one still stops
-        // the surname scan the way it always did
         $name = (new Parser())->parse('John - Smith');
 
         $this->assertSame('John', $name->getFirstname());

@@ -3,9 +3,7 @@
 namespace Iliaal\NameParser;
 
 /**
- * Shared token-normalization primitives. The parser's mappers and the advisory
- * Confidence pass must key and case-test tokens identically, so both routes go
- * through this single implementation rather than duplicating the transforms.
+ * Shared normalization keeps parser and confidence case signals consistent.
  *
  * @internal
  */
@@ -19,19 +17,12 @@ final class Text
 
     private const int MAX_NICKNAME_DELIMITER_PAIRS = 32;
 
-    /**
-     * entries evicted oldest-first a quarter at a time, so a batch of unique
-     * tokens degrades gradually instead of falling off the wholesale-clear
-     * cliff (np-cr-015)
-     */
     private const int MAX_KEY_CACHE_ENTRIES = 4096;
 
     private const int KEY_CACHE_EVICT_BATCH = 1024;
 
     /**
-     * repeat lookups of mid-size tokens (65..4096 bytes) stay cheap without
-     * letting huge tokens pin megabytes in the main table; anything larger
-     * bypasses the cache (never a real name token)
+     * Bound retained bytes as well as entry count; larger tokens bypass caching.
      */
     private const int MAX_LONG_KEY_BYTES = 4096;
 
@@ -76,9 +67,6 @@ final class Text
      */
     public static function key(string $word): string
     {
-        // the entry cap bounds the count, not the bytes: a run of huge unique
-        // tokens would retain megabytes, and nothing that long is a name worth
-        // caching anyway
         $length = strlen($word);
 
         if ($length > self::MAX_LONG_KEY_BYTES) {
@@ -106,9 +94,7 @@ final class Text
             return self::$cache[$word];
         }
 
-        // pure, config-independent transform, so cached entries never go stale;
-        // evict the oldest quarter instead of dropping the table wholesale, so
-        // large unique-token batches degrade gradually (no 4096-entry cliff).
+        // Evict the oldest quarter to avoid a wholesale cache-miss cliff.
         if (count(self::$cache) >= self::MAX_KEY_CACHE_ENTRIES) {
             self::$cache = array_slice(
                 self::$cache,
@@ -139,9 +125,6 @@ final class Text
         return mb_strtolower($key, 'UTF-8');
     }
 
-    /**
-     * the word's letters only, everything else stripped
-     */
     public static function letters(string $word): string
     {
         return preg_replace('/[^\p{L}\p{M}]/u', '', $word) ?? '';
@@ -216,10 +199,7 @@ final class Text
     }
 
     /**
-     * a delimiter containing a comma, NUL (the comma-mask placeholder), or any
-     * whitespace/control character would silently corrupt the structural-comma
-     * split or space tokenization (e.g. ',' => ',' shields every comma), so
-     * such pairs are ignored (np-cr-012)
+     * Commas, NUL placeholders, and whitespace/control characters would corrupt splitting.
      */
     private static function containsStructuralChar(string $delimiter): bool
     {
@@ -238,9 +218,7 @@ final class Text
     }
 
     /**
-     * true for the attested placeholder set ('Unknown'): dropped as credential
-     * noise wherever an anchor exists, unlike punctuation-only noise which is
-     * scoped to credential-bearing segments (np-cr-014, np-o-04)
+     * Unlike punctuation noise, placeholders drop wherever a credential anchor exists.
      */
     public static function isCredentialPlaceholder(string $token): bool
     {
@@ -248,10 +226,7 @@ final class Text
     }
 
     /**
-     * the token's letters plus the case signals derived from them in a single
-     * pass: one letters() regex instead of one per predicate (np-cr-016).
-     * `upper`/`lower` carry the isUpperCase()/isLowerCase() semantics exactly
-     * (letters exist, all one case, and the script has case).
+     * Extract letters once for all case predicates; uncased scripts set neither upper nor lower.
      *
      * @return array{letters: string, upper: bool, lower: bool, cased: bool}
      */
@@ -378,8 +353,6 @@ final class Text
      */
     public static function isUnknownCredentialCandidate(string $token): bool
     {
-        // a bracket/quote-wrapped token is a nickname or aside ("(JJ)"), not a
-        // credential; those are resolved by later mappers, so leave them be.
         if (preg_match('/[()\[\]{}<>"\']/', $token) === 1) {
             return false;
         }

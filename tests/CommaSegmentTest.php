@@ -6,12 +6,6 @@ use Iliaal\NameParser\Parser;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
-/**
- * Everything after the first comma is the given-name segment. This locks that
- * a comma-separated middle name is retained (not dropped as a non-credential
- * third segment) while trailing credentials are still stripped to the suffix,
- * including a given segment that is nothing but credentials.
- */
 class CommaSegmentTest extends TestCase
 {
     use LoneSalutationCases;
@@ -36,40 +30,28 @@ class CommaSegmentTest extends TestCase
             'surname suffix Jr'               => ['Doe Jr, John', 'John', '', 'Doe', 'Jr'],
             'surname roman suffix'            => ['Doe III, John', 'John', '', 'Doe', 'III'],
             'credential-only given keeps first segment western' => ['Anthony Von Fange III, PHD', 'Anthony', '', 'von Fange', 'III PhD'],
-            // a whole credential-only segment is pulled out to the suffix; the
-            // remaining name segments still fold into the given name
             'credential segment before given' => ['Smith, MD, John', 'John', '', 'Smith', 'MD'],
             'all-credential segments western'  => ['John Smith, MD, FACS', 'John', '', 'Smith', 'MD FACS'],
             'unknown credential rides on known' => ['Garcia, Maria, MD, FACS', 'Maria', '', 'Garcia', 'MD FACS'],
             'ambiguous credential segment keeps middle' => ['Smith, John, DO, Robert', 'John', 'Robert', 'Smith', 'DO'],
-            // leading credential run inside the given segment
             'leading credential run in given' => ['Smith, MD John', 'John', '', 'Smith', 'MD'],
             'leading title-case name is not a credential' => ['Smith, Do John', 'Do', 'John', 'Smith', ''],
             'mixed credential positions keep source order' => ['Smith, MD, John PhD', 'John', '', 'Smith', 'MD PhD'],
             'candidate cannot cross a name segment' => ['Smith, JOHN, Robert, MD', 'John', 'Robert', 'Smith', 'MD'],
             'unknown candidate cannot cross a name segment' => ['Smith, FACS, John, MD', 'Facs', 'John', 'Smith', 'MD'],
-            // pure all-caps given segments are names, not pre-anchor credentials
             'all-caps given before credential stays name' => ['Smith, JOHN, MD', 'John', '', 'Smith', 'MD'],
             'all-caps multi-token given before credential' => ['Smith, JOHN PAUL, MD', 'John', 'Paul', 'Smith', 'MD'],
-            // pure unknown-candidate segments only ride after a dictionary anchor
             'pure unknown before dictionary stays name' => ['Smith, FACS, MD', 'Facs', '', 'Smith', 'MD'],
-            // mixed-segment trailing candidate peels onto a later dictionary segment
             'mixed segment trailing candidate rides on later dictionary' => ['Smith, John FACS, MD', 'John', '', 'Smith', 'FACS MD'],
-            // same-segment dictionary suffix anchors trailing unknown candidates
             'mixed same-segment dict then unknown' => ['Garcia, Maria MD FACS', 'Maria', '', 'Garcia', 'MD FACS'],
             'mixed same-segment multi-token then unknown' => ['Smith, John MD FACS', 'John', '', 'Smith', 'MD FACS'],
-            // mixed segment with dict suffix then pure unknown segment
             'mixed then pure unknown segment rides' => ['Smith, John MD, FACS', 'John', '', 'Smith', 'MD FACS'],
-            // trailing unknown peel without later dictionary stays a name
             'mixed trailing unknown without later dict stays name' => ['Smith, John FACS', 'John', 'Facs', 'Smith', ''],
-            // terminal-token guard: ALL-CAPS lone ambiguous given is a credential
             'terminal all-caps ambiguous is credential' => ['Smith, DO', '', '', 'Smith', 'DO'],
             'terminal title-case ambiguous stays name' => ['Smith, Do', 'Do', '', 'Smith', ''],
-            // junior/senior sole or leading given are names, not credentials
             'sole junior is given name' => ['Smith, Junior', 'Junior', '', 'Smith', ''],
             'sole senior is given name' => ['Smith, Senior', 'Senior', '', 'Smith', ''],
             'leading junior before given' => ['Smith, Junior Paul', 'Junior', 'Paul', 'Smith', ''],
-            // multi-token left side keeps generational junior as suffix
             'generational junior after structured left' => ['Sir James Reynolds, Junior', 'James', '', 'Reynolds', 'Junior'],
         ];
     }
@@ -102,11 +84,6 @@ class CommaSegmentTest extends TestCase
         $this->assertSame('Walker', $name->getLastname());
     }
 
-    /**
-     * The uniform-uppercase signal for the InitialMapper split gate comes from
-     * the whole input, not the given segment alone. "Smith" proves mixed case,
-     * so the JM token splits exactly as it does in the space-form "JM Smith".
-     */
     public function testCommaGivenInitialsUseWholeInputCasing(): void
     {
         $name = (new Parser())->parse('Smith, JM');
@@ -125,10 +102,6 @@ class CommaSegmentTest extends TestCase
         $this->assertSame('Smith', $name->getLastname());
     }
 
-    /**
-     * The override is transient: a plain single-segment parse on the same
-     * instance is unaffected by a preceding comma parse.
-     */
     public function testOverrideDoesNotLeakToSingleSegmentParse(): void
     {
         $parser = new Parser();
@@ -140,11 +113,6 @@ class CommaSegmentTest extends TestCase
         $this->assertSame('Walker', $name->getLastname());
     }
 
-    /**
-     * a surname segment that is nothing but a salutation must keep it a
-     * salutation, not promote it to a last name (shared lock: see
-     * LoneSalutationCases)
-     */
     #[DataProvider('loneSalutationProvider')]
     public function testLoneSalutationSurnameSegmentStaysSalutation(
         string $input,
@@ -163,11 +131,6 @@ class CommaSegmentTest extends TestCase
         $this->assertSame($suffix, $name->getSuffix(), "suffix for '$input'");
     }
 
-    /**
-     * the surname sub-parser now runs the Nickname and Initial mappers, so a
-     * parenthetical nickname is extracted and a stray letter becomes an initial
-     * rather than raw middle-name text
-     */
     public function testSurnameSegmentExtractsNickname(): void
     {
         $name = (new Parser())->parse('John (Bob) Smith, MD');
@@ -188,10 +151,6 @@ class CommaSegmentTest extends TestCase
         $this->assertSame('MD', $name->getSuffix());
     }
 
-    /**
-     * a comma inside a matched nickname delimiter span must not be treated as
-     * the surname/given separator
-     */
     public function testGivenSideNicknameKeepsItsComma(): void
     {
         $name = (new Parser())->parse('Smith, John (Jack, Robert)');
@@ -233,15 +192,11 @@ class CommaSegmentTest extends TestCase
 
     public function testSuffixCollidingSpanCloserKeepsNicknameWhole(): void
     {
-        // the span's closer token keys as a suffix ("III)"), but consuming it
-        // would orphan the opener; the whole span stays a nickname and the
-        // shielded comma must not leak into the middle name
+        // III) must remain the nickname's closer, not a credential.
         $name = (new Parser())->parse('Smith, John (Jack, III)');
 
         $this->assertSame('John', $name->getFirstname());
         $this->assertSame('Smith', $name->getLastname());
-        // Nickname normalization title-cases the all-caps token, like any
-        // other all-caps nickname value
         $this->assertSame('Jack, Iii', $name->getNickname());
         $this->assertSame('', $name->getMiddlename());
     }
@@ -255,11 +210,6 @@ class CommaSegmentTest extends TestCase
         $this->assertSame('Doe', $name->getLastname());
     }
 
-    /**
-     * a real comma still separates the surname from the given segment; a
-     * secondary comma inside a given-side parenthetical is not bisected into
-     * the surname
-     */
     public function testStructuralCommaStillSplitsWithGivenSideParenthetical(): void
     {
         $name = (new Parser())->parse('Smith, John (Jack, III)');
@@ -269,10 +219,7 @@ class CommaSegmentTest extends TestCase
     }
 
     /**
-     * "MS" is both a salutation (Ms.) and a credential (MS). In the given
-     * segment the Suffix mapper runs before the Salutation mapper, so a bare
-     * "MS" given segment is classified as a trailing credential, not promoted
-     * to a leading salutation.
+     * MS collides with Ms.; the given-segment suffix pass takes precedence.
      */
     public function testGivenSegmentCredentialOutranksSalutationCollision(): void
     {
@@ -328,8 +275,6 @@ class CommaSegmentTest extends TestCase
 
     public function testTrailingSpanWithSuffixCollidingCloserStaysNickname(): void
     {
-        // "MD)" closes the span; consuming it as a credential would orphan
-        // the opener and demote the nickname body into the name getters
         $name = (new Parser())->parse('Doe, Jane (Bobbie, MD)');
 
         $this->assertSame('Jane', $name->getFirstname());
@@ -351,11 +296,6 @@ class CommaSegmentTest extends TestCase
         ];
     }
 
-    /**
-     * an all-caps given name adjacent to the trailing credential must not be
-     * swallowed into the suffix: the given segment cannot map entirely to
-     * credentials, matching the comma-separated "Smith, JOHN, MD" locks
-     */
     #[DataProvider('allCapsGivenBeforeCredentialProvider')]
     public function testAllCapsGivenAdjacentToCredentialStaysName(
         string $input,
@@ -373,8 +313,6 @@ class CommaSegmentTest extends TestCase
 
     public function testKnownCredentialLeadingUnknownCandidateStillRides(): void
     {
-        // the README-documented preference: when the unknown stands alone
-        // behind a known credential, both stay in the suffix
         $name = (new Parser())->parse('Smith, MD FACS');
 
         $this->assertSame('Smith', $name->getLastname());
@@ -384,8 +322,6 @@ class CommaSegmentTest extends TestCase
 
     public function testLeadingCredentialRunDoesNotAnchorAcrossComma(): void
     {
-        // a leading run ("MD John") must not promote a name in a following
-        // segment; only a run touching the segment tail carries the anchor
         $name = (new Parser())->parse('Smith, MD John, PAUL');
 
         $this->assertSame('John', $name->getFirstname());
@@ -407,8 +343,6 @@ class CommaSegmentTest extends TestCase
 
     public function testSurnameSegmentBindsPastMidSegmentNickname(): void
     {
-        // the reverse surname scan must look through an extracted nickname
-        // instead of stranding the far-side token as an invisible raw string
         $name = (new Parser())->parse('Hidalgo (Hid) Castillo, Maria');
 
         $this->assertSame('Maria', $name->getFirstname());
@@ -417,12 +351,8 @@ class CommaSegmentTest extends TestCase
     }
 
     /**
-     * The multibyte-delimiter char scan bails past 4096 bytes (real names are
-     * tiny; hostile megabyte rows split unshielded by design), so a shielded
-     * nickname comma just under the cliff stays shielded while the same row
-     * one byte over bisects surname/given. The single-byte fast path has no
-     * cap, so the pair configures multibyte delimiters («») to pin the guard
-     * itself rather than the fast path.
+     * Use multibyte delimiters to exercise the 4096-byte shielding limit;
+     * the ASCII scan has no length cap.
      *
      * @return array<string, array{int, string, string}>
      */

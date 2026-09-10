@@ -17,15 +17,8 @@ use ReflectionMethod;
 use ReflectionProperty;
 use Tests\Iliaal\NameParser\Mapper\AbstractMapperTestCase;
 
-/**
- * Remediation pins for the round-2 review beads (full-review 20260903).
- * Each test names its bead.
- */
 class RemediationRound2Test extends TestCase
 {
-    // np-r2-01: canonicalParts includes normalize(), so a dictionary
-    // rendering drift (same class + raw value, different rendered form)
-    // yields different descriptors and fails mapper unit tests
     public function testCanonicalPartsPinsDictionaryRendering(): void
     {
         $method = new ReflectionMethod(AbstractMapperTestCase::class, 'canonicalParts');
@@ -36,8 +29,6 @@ class RemediationRound2Test extends TestCase
         $this->assertNotSame($canonical, $drifted);
     }
 
-    // np-r2-02: a subclass hook routing another input through
-    // parseSplitName() first must not consume the outer stashed tail
     public function testReentrantSplitHookKeepsOuterTail(): void
     {
         $parser = new class extends Parser {
@@ -63,10 +54,7 @@ class RemediationRound2Test extends TestCase
         $this->assertSame((string) (new Parser())->parse('Smith, John, PhD'), (string) $outer);
     }
 
-    // np-r3-01: a re-entrant $this->parse() inside a parseSplitName
-    // override pushes and pops its own stash entry: the hook only peeks,
-    // so the outer tail is still on top when the inner parse returns,
-    // at depth>1 and on the exception path.
+    // Nested parse() calls must restore the outer tail even after exceptions.
     public function testReentrantParseInsideHookKeepsStackBalanced(): void
     {
         $parser = new class extends Parser {
@@ -125,8 +113,6 @@ class RemediationRound2Test extends TestCase
             $this->assertSame((string) (new Parser())->parse('Doe, Jane, MD'), (string) $name);
         }
 
-        // every diving level saw its own tail restored: the inner parse
-        // left the outer entry untouched on top of the stack
         $this->assertSame([' John, PhD', ' Jane, MD'], $parser->givens);
         $this->assertCount(2, $parser->headsBefore);
         $this->assertCount(2, $parser->headsAfter);
@@ -140,8 +126,6 @@ class RemediationRound2Test extends TestCase
         $stack = (new ReflectionProperty(Parser::class, 'preSplitTailStack'))->getValue($parser);
         $this->assertSame([], $stack);
 
-        // exception path: a throw out of the hook still unwinds the stash
-        // and leaves the parser reusable
         $throwing = new class extends Parser {
             private bool $reentered = false;
 
@@ -183,9 +167,6 @@ class RemediationRound2Test extends TestCase
         );
     }
 
-    // np-r2-03: resyncing a promoted default list through the factory
-    // element builders yields the factory-built pipeline and parses
-    // identically to a fresh parser with the same config
     public function testResyncedMappersMatchFactoryBuilders(): void
     {
         $promoted = new Parser();
@@ -221,8 +202,6 @@ class RemediationRound2Test extends TestCase
         }
     }
 
-    // np-r2-04: isUnknownTail uses the injected per-parse memoized
-    // candidate and rider tests (same definition as the split scan)
     public function testUnknownTailUsesInjectedCandidateAndRiderTests(): void
     {
         $parser = new Parser();
@@ -249,8 +228,6 @@ class RemediationRound2Test extends TestCase
         $this->assertFalse($tail->isUnknownTail(['John']));
     }
 
-    // np-r2-05: the uniform-uppercase gate shares the per-parse token
-    // memo instead of re-scanning every token
     public function testUniformGateSharesTokenMemo(): void
     {
         $parser = new Parser();
@@ -263,8 +240,6 @@ class RemediationRound2Test extends TestCase
         $this->assertSame(['AB', 'CD'], array_keys($memo));
     }
 
-    // np-r2-05: the per-parse token memo is capped; past the cap tokens
-    // are still analyzed correctly without retaining entries
     public function testTokenAnalysisMemoIsCapped(): void
     {
         $parser = new Parser();
@@ -287,8 +262,6 @@ class RemediationRound2Test extends TestCase
         $this->assertEquals(Text::analyzeToken('Q0X'), $analyze->invoke($parser, 'Q0X'));
     }
 
-    // np-r2-05: the per-parse token memo is dropped at the end of
-    // parse(), so a hostile row does not pin entries between parses
     public function testTokenMemoClearedAfterParse(): void
     {
         $parser = new Parser();
@@ -298,10 +271,7 @@ class RemediationRound2Test extends TestCase
         $this->assertSame([], $memo);
     }
 
-    // np-r2-06: parse() entry resets the sticky casing overrides through
-    // the shared helper, so a stale override cannot leak into the next parse
-    // (a stale uniform-upper `true` would suppress the DJ split and yield no
-    // initials instead of the stock 'D J' split)
+    // A stale uniform-uppercase override would suppress the DJ initial split.
     public function testParseEntryResetsUniformUpperOverrides(): void
     {
         $parser = new Parser();
@@ -316,8 +286,6 @@ class RemediationRound2Test extends TestCase
         $this->assertSame((string) (new Parser())->parse('DJ Westbam'), (string) $parser->parse('DJ Westbam'));
     }
 
-    // np-r2-07: the firstname stage comes from the factory element
-    // builder in both the default pipeline and the second-segment parser
     public function testFirstnameBuilderFeedsBothPipelines(): void
     {
         $this->assertInstanceOf(FirstnameMapper::class, SegmentParserFactory::newFirstnameMapper());
@@ -336,8 +304,6 @@ class RemediationRound2Test extends TestCase
         $classes = array_map(static fn(object $mapper): string => $mapper::class, $pipeline);
         $this->assertContains(FirstnameMapper::class, $classes);
 
-        // Parser::getMappers() routes through the factory default pipeline,
-        // so its firstname stage equals a factory-built element
         $defaultMappers = $parser->getMappers();
         $defaultClasses = array_map(static fn(object $mapper): string => $mapper::class, $defaultMappers);
         $this->assertContains(FirstnameMapper::class, $defaultClasses);
@@ -351,10 +317,7 @@ class RemediationRound2Test extends TestCase
         $this->assertContains(FirstnameMapper::class, $secondClasses);
         $this->assertEquals(SegmentParserFactory::newFirstnameMapper(), self::findFirstnameMapper($secondMappers));
 
-        // both Parser construction sites route through the factory element
-        // builder, so a factory default change cannot leave an inline site
-        // stale (np-r3-02): reverting either site to `new FirstnameMapper()`
-        // fails this pin.
+        // Keep both construction sites tied to factory defaults.
         $file = (new ReflectionClass(Parser::class))->getFileName();
         $this->assertIsString($file);
         $src = (string) file_get_contents($file);

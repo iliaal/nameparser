@@ -35,7 +35,6 @@ class MiddlenameMapper extends AbstractMapper
     {
         $parts = $this->normalizeParts($parts);
 
-        // If we don't expect a lastname, match a mimimum of 2 parts
         $minumumParts = ($this->mapWithoutLastname ? 2 : 3);
 
         if (count($parts) < $minumumParts) {
@@ -57,8 +56,6 @@ class MiddlenameMapper extends AbstractMapper
      */
     protected function mapFrom(int $start, array $parts): array
     {
-        // If we don't expect a lastname, include the last part,
-        // otherwise skip the last (-1) because it should be a lastname
         $length = count($parts) - ($this->mapWithoutLastname ? 0 : 1);
 
         for ($k = $start; $k < $length; $k++) {
@@ -79,9 +76,7 @@ class MiddlenameMapper extends AbstractMapper
     }
 
     /**
-     * wrap a raw middle-name token, rendering a known surname particle in its
-     * lowercase dictionary form ("Maria del Carmen" keeps "del" lowercase) so a
-     * compound-given-name particle matches how a surname prefix is normalized
+     * Compound given-name particles keep the dictionary casing used for surnames.
      */
     private function makeMiddlename(string $part): Middlename
     {

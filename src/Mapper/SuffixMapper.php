@@ -25,11 +25,7 @@ class SuffixMapper extends AbstractMapper
         'do' => true, 'vi' => true, 'vii' => true, 'viii' => true,
         'ix' => true, 'x' => true, 'ma' => true, 'ms' => true,
         'pe' => true, 'dc' => true, 'pa' => true,
-        // multi-char roman numerals + creds that are also real US surnames
-        // (Census: Ii, Iv, Mba); casing still strips the genuine credential.
         'ii' => true, 'iii' => true, 'iv' => true, 'mba' => true,
-        // short allied-health creds that are also real names ("Ba", "Lac",
-        // initials "Rn"/"Pt"); casing still strips the uppercase credential.
         'ba' => true, 'bs' => true, 'lac' => true, 'np' => true,
         'od' => true, 'pt' => true, 'rd' => true, 'rn' => true,
     ];
@@ -120,14 +116,10 @@ class SuffixMapper extends AbstractMapper
             return $parts;
         }
 
-        // casing carries no signal under uniform-uppercase input, so unknown
-        // all-caps tokens are not treated as credential candidates there.
-        // Computed lazily: most rows never reach the candidate check.
+        // Uniform-uppercase input has no casing signal; compute it only for candidates.
         $uniformUpper = null;
 
-        // in the comma given-segment config a leading credential run precedes
-        // the given name ("Smith, MD John"); map it before the tail scan so it
-        // is not left as a stray token that gets split into phantom initials.
+        // Map leading credentials before initials can split them in "Smith, MD John".
         $leadingSuffixIndexes = $this->reservedParts === 0
             ? $this->mapLeadingSuffixRun($parts)
             : [];
@@ -137,8 +129,7 @@ class SuffixMapper extends AbstractMapper
             $uniformUpper = $this->isUniformUpperContext($parts, $this->uniformUpperOverride);
 
             if (! $uniformUpper) {
-                // the run may skip over nickname parts, so continue from the
-                // slot after its last mapped index, not from its length
+                // Skipped nicknames make the last mapped index differ from the run length.
                 $leadingCandidateIndexes = $this->mapLeadingUnknownCredentialRun(
                     $parts,
                     $leadingSuffixIndexes[count($leadingSuffixIndexes) - 1] + 1,
@@ -156,10 +147,7 @@ class SuffixMapper extends AbstractMapper
         $candidateIndexes = [];
         $mappedSuffix = false;
         $crossedBridge = false;
-        // prefix opener-presence table: one bool per (delimiter pair, token
-        // position) recording whether an unmatched opener appeared in any
-        // earlier raw token, so the per-suffix isSpanTailToken() check is O(1)
-        // instead of re-scanning all earlier parts with paired substr_count.
+        // Precompute opener presence so each suffix-span check stays O(1).
         $spanOpenerPrefix = $this->buildSpanOpenerPrefix($parts);
         for ($k = count($parts) - 1; $k >= 0; $k--) {
             if (isset($leadingSet[$k])) {
@@ -168,9 +156,7 @@ class SuffixMapper extends AbstractMapper
 
             $part = $parts[$k];
 
-            // decoration parts are transparent to the credential scan: a
-            // nickname or an ignored connector ("MD & PhD") sits inside the
-            // tail without ending it
+            // Nicknames and ignored connectors do not end a credential run.
             if ($part instanceof Nickname || $part instanceof Ignored) {
                 continue;
             }
@@ -184,8 +170,6 @@ class SuffixMapper extends AbstractMapper
                     break;
                 }
 
-                // noise keeps precedence over the candidate check so a
-                // placeholder ("Unknown") is dropped, not carried as a cred.
                 if ($this->isTailNoise($part)) {
                     $noiseIndexes[$k] = true;
 
@@ -194,10 +178,7 @@ class SuffixMapper extends AbstractMapper
 
                 $uniformUpper ??= $this->isUniformUpperContext($parts, $this->uniformUpperOverride);
 
-                // a candidate is only credible inside the contiguous credential
-                // run at the tail; once a preserved name token has been crossed
-                // ("John Paul JM Smith MD"), an all-caps token is a combined
-                // initial, not a stray credential.
+                // Crossing a name ends the candidate run: JM in "John Paul JM Smith MD" is initials.
                 if (! $crossedBridge && ! $uniformUpper && $this->isUnknownCredentialCandidate($part)) {
                     $candidateIndexes[$k] = true;
 
@@ -213,10 +194,7 @@ class SuffixMapper extends AbstractMapper
                 continue;
             }
 
-            // the closer token of a multi-token nickname span keys as a suffix
-            // ("Jr)" in "(Bob Jr)"); consuming it would orphan the opener and
-            // shred the span. A stray closer with no earlier opener
-            // ("John Smith MD)") is ordinary trailing punctuation and maps.
+            // Preserve nickname closers such as "(Bob Jr)"; an unpaired "MD)" can still be a suffix.
             if ($this->isSpanTailToken($parts, $k, $spanOpenerPrefix)) {
                 break;
             }
@@ -236,16 +214,12 @@ class SuffixMapper extends AbstractMapper
 
         $suffixIndexes = array_merge($leadingSuffixIndexes, $suffixIndexes);
 
-        // candidates ride along only when a real dictionary suffix anchored the
-        // tail; with none, the outcome stays byte-identical to no stripping.
+        // Unknown candidates require a dictionary anchor.
         if ($suffixIndexes === []) {
             return $parts;
         }
 
-        // a given segment must not map entirely to credentials when it started
-        // with name-shaped tokens: "Smith, JOHN MD" keeps JOHN as the first
-        // name, same as the comma-separated "Smith, JOHN, MD". Candidates left
-        // of the leftmost dictionary suffix are the name, not stray creds.
+        // Preserve all-caps given names before the first anchor: "Smith, JOHN MD".
         if ($this->reservedParts === 0 && $candidateIndexes !== []) {
             /** @var array<int, true> $creditSet */
             $creditSet = array_fill_keys($suffixIndexes, true) + $candidateIndexes + $noiseIndexes;
@@ -283,8 +257,6 @@ class SuffixMapper extends AbstractMapper
         /** @var array<int, true> $suffixIndexSet */
         $suffixIndexSet = array_fill_keys($suffixIndexes, true);
 
-        // dictionary suffixes and unknown-credential candidates both render as
-        // Suffix parts, merged in original left-to-right order
         $creditIndexes = array_keys($suffixIndexSet + $candidateIndexes);
         sort($creditIndexes);
         /** @var array<int, true> $creditSet */
@@ -351,9 +323,7 @@ class SuffixMapper extends AbstractMapper
         }
 
         if ($this->isAmbiguous($part)) {
-            // casing as signal: ALL-CAPS reads as a credential ("DO", "VI"),
-            // Title/lower case reads as a name token ("Do", "Vi"). An exact
-            // mixed-case rendered form such as "LAc" is also a credential.
+            // ALL-CAPS or an exact dictionary rendering (LAc) identifies a credential.
             return $this->matchesCredentialCase($part);
         }
 
@@ -374,11 +344,8 @@ class SuffixMapper extends AbstractMapper
             return false;
         }
 
-        // a single letter after a real given name in a comma given segment is a
-        // middle initial, not a roman-numeral suffix: "Lapin, Michelle I" is
-        // registry LAST, FIRST MI form. A credential-only segment ("Smith, MD I")
-        // has no preceding name token and keeps the roman reading. Digit keys
-        // (German ordinals "2.") carry no initial reading and are exempt.
+        // After a given name, I/V/X denote middle initials. Credential-only
+        // segments and numeric ordinals retain the suffix reading.
         $key = $this->getKey($part);
         if ($this->reservedParts === 0
             && mb_strlen($key, 'UTF-8') < 2
@@ -397,9 +364,7 @@ class SuffixMapper extends AbstractMapper
 
         $key = $this->getKey($part);
 
-        // a bare single-letter roman numeral right after the first name is far
-        // more likely a surname or stray initial ("Malcolm X") than a suffix,
-        // so the relaxed slot only takes multi-character suffix keys
+        // A lone roman letter after a firstname more likely denotes a surname or initial.
         if (mb_strlen($key, 'UTF-8') < 2) {
             return false;
         }
@@ -431,8 +396,6 @@ class SuffixMapper extends AbstractMapper
         for (; $k < $count; $k++) {
             $part = $parts[$k];
 
-            // an already-extracted nickname does not end the leading run:
-            // "Smith, (Doc) MD John" still carries the credential run
             if ($part instanceof Nickname) {
                 continue;
             }
@@ -441,8 +404,7 @@ class SuffixMapper extends AbstractMapper
                 break;
             }
 
-            // junior/senior at the head of a given segment are names
-            // ("Smith, Junior Paul"), not leading credentials like "MD John"
+            // Junior/Senior at the head of a given segment are names.
             $key = $this->getKey($part);
             if ($key === 'junior' || $key === 'senior') {
                 break;
@@ -467,9 +429,7 @@ class SuffixMapper extends AbstractMapper
     }
 
     /**
-     * Unknown credentials can ride on a dictionary credential only while they
-     * are immediately adjacent to its leading run. The first name token ends
-     * the run, so a later uppercase name is never pulled backward into it.
+     * Only candidates adjacent to the leading credential run can join it.
      *
      * @param  PartArray  $parts
      * @return array<int, true>
@@ -496,12 +456,8 @@ class SuffixMapper extends AbstractMapper
     }
 
     /**
-     * Prefix opener-presence table, one column per span delimiter pair: the
-     * column entry at each token position records whether an unmatched opener
-     * appeared in any earlier raw token. Built once per map() in a single
-     * linear pass so the per-suffix isSpanTailToken() check below is O(1).
-     * Empty when no token can open a span (no delimiters configured, or no
-     * delimiter byte anywhere in the row), in which case nothing is a tail.
+     * Record earlier unmatched openers per delimiter and position for O(1) tail checks.
+     * Return an empty table when no token can open a span.
      *
      * @param  PartArray  $parts
      * @return list<list<bool>>
@@ -555,12 +511,8 @@ class SuffixMapper extends AbstractMapper
     }
 
     /**
-     * true when the token's unbalanced closing delimiter pairs with an
-     * unmatched opener in an earlier raw token, i.e. the token is the tail of
-     * a multi-token nickname span ("(Bob Jr)"). A self-contained "(MD)" is
-     * balanced, and a stray closer with no earlier opener is not a span tail.
-     * The earlier-opener half is an O(1) lookup into the prefix table built by
-     * buildSpanOpenerPrefix(), not a re-scan of all earlier parts.
+     * An unbalanced closer is a span tail only when an earlier opener exists.
+     * Self-contained "(MD)" and stray "MD)" remain eligible suffixes.
      *
      * @param  PartArray  $parts
      * @param  list<list<bool>>  $spanOpenerPrefix
@@ -630,11 +582,6 @@ class SuffixMapper extends AbstractMapper
         return false;
     }
 
-    /**
-     * an all-caps unknown token in the credential tail ("FACS", "CCRN"): not a
-     * dictionary suffix, but its casing reads as a credential. Guarded by the
-     * caller against uniform-uppercase input, where caps carry no signal.
-     */
     private function isUnknownCredentialCandidate(string $part): bool
     {
         if (array_key_exists($this->getKey($part), $this->suffixes)) {
@@ -654,9 +601,7 @@ class SuffixMapper extends AbstractMapper
      */
     private function isPrecededBySingleInitial(array $parts, int $index): bool
     {
-        // a nickname between the initial and the token must not flip the
-        // classification ("John A (Bob) MA" reads like "John A MA"), whether it
-        // was already extracted or is still a raw self-contained span
+        // Nicknames must not change the preceding-initial signal in "John A (Bob) MA".
         for ($i = $index - 1; $i >= 0; $i--) {
             $previous = $parts[$i];
 

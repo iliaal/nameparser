@@ -53,9 +53,6 @@ class English implements LanguageInterface
         'rph' => 'RPh',
         'senior' => 'Senior',
         'sr' => 'Sr',
-        // Nursing / allied-health credentials, by descending frequency in the
-        // public NPPES/NPI registry. Without these, a trailing credential like
-        // "Jane Doe, RN" leaks into the parsed first name.
         'aprn' => 'APRN',
         'arnp' => 'ARNP',
         'atc' => 'ATC',
@@ -149,10 +146,7 @@ class English implements LanguageInterface
         'le' => 'le',
         'lo' => 'lo',
         'los' => 'los',
-        // Irish particles render capitalised, unlike the continental
-        // tussenvoegsels: "Ó Cuív" and "Ní Mhaoileoin" are never written with a
-        // lowercase particle. Only the fada-bearing "Ó" is listed; bare ASCII
-        // "O" is indistinguishable from a middle initial ("John F Kennedy").
+        // Irish particles retain capitals; bare ASCII O is omitted because it also denotes an initial.
         'mhic' => 'Mhic',
         'ní' => 'Ní',
         "ni\u{0301}" => 'Ní',

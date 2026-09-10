@@ -6,23 +6,12 @@ use Iliaal\NameParser\Text;
 
 abstract class AbstractPart
 {
-    /**
-     * the wrapped value
-     */
     protected string $value = '';
 
-    /**
-     * memoized camelcase result, keyed by the word it was computed for; parts
-     * are effectively immutable after mapping, so this is computed at most once
-     * per value and cleared whenever the value changes
-     */
     private ?string $camelcaseCache = null;
 
     private ?string $camelcaseCacheWord = null;
 
-    /**
-     * constructor allows passing the value to wrap
-     */
     public function __construct(string|AbstractPart $value)
     {
         $this->setValue($value);
@@ -52,26 +41,16 @@ abstract class AbstractPart
         return $this;
     }
 
-    /**
-     * get the wrapped value
-     */
     public function getValue(): string
     {
         return $this->value;
     }
 
-    /**
-     * get the normalized value
-     */
     public function normalize(): string
     {
         return $this->getValue();
     }
 
-    /**
-     * helper for camelization of values
-     * to be used during normalize
-     */
     protected function camelcase(string $word): string
     {
         if ($this->camelcaseCache !== null && $this->camelcaseCacheWord === $word) {
@@ -81,9 +60,6 @@ abstract class AbstractPart
         $this->camelcaseCacheWord = $word;
 
         $caseShape = preg_replace('/\p{M}/u', '', $word) ?? $word;
-        // routed through Text so caseless scripts and digit-only tokens read
-        // exactly as the mapper-level case gates see them; outcome matches the
-        // old whole-string strtoupper/strtolower compares on every input.
         $isMixedCase = strlen($caseShape) <= 1024
             && ! Text::isUpperCase($caseShape)
             && ! Text::isLowerCase($caseShape)
@@ -98,7 +74,6 @@ abstract class AbstractPart
             return $this->camelcaseCache = mb_convert_case($word, MB_CASE_TITLE, 'UTF-8');
         }
 
-        // preg_replace_callback returns null on regex error; fall back to the input.
         return $this->camelcaseCache = preg_replace_callback('/[\p{L}\p{M}0-9]+/ui', $this->camelcaseReplace(...), $word) ?? $word;
     }
 
@@ -143,8 +118,6 @@ abstract class AbstractPart
     }
 
     /**
-     * camelcasing callback
-     *
      * @param  array<int, string>  $matches
      */
     protected function camelcaseReplace(array $matches): string

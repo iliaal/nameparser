@@ -7,13 +7,6 @@ use Iliaal\NameParser\Part\Ignored;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
-/**
- * setSurnameFirst(true) reads a space-separated, comma-less name in CJK order
- * (surname first): the first token is the surname, the rest is the given-name
- * segment, routed through the same split path as the comma form. It is an
- * opt-in mode the caller asserts for the batch, since romanized order cannot be
- * auto-detected; the default parser stays Western-ordered.
- */
 class SurnameFirstTest extends TestCase
 {
     /**
@@ -65,10 +58,6 @@ class SurnameFirstTest extends TestCase
         $this->assertSame('Zedong', $name->getLastname());
     }
 
-    /**
-     * a leading salutation must not be shifted away as the surname: it is peeled
-     * off and the first real token becomes the surname
-     */
     public function testLeadingSalutationIsNotSurname(): void
     {
         $name = (new Parser())->setSurnameFirst(true)->parse('Dr. Kim Jong Un');
@@ -113,11 +102,6 @@ class SurnameFirstTest extends TestCase
         ];
     }
 
-    /**
-     * a credential-only comma tail leaves an empty given segment; surname-first
-     * order must be preserved for the surname portion rather than falling back
-     * to Western order
-     */
     public function testCredentialOnlyTailKeepsSurnameFirstOrder(): void
     {
         $name = (new Parser())->setSurnameFirst(true)->parse('Kim Jong Un, MD');
@@ -137,10 +121,6 @@ class SurnameFirstTest extends TestCase
     }
 
     /**
-     * A single-token surname with a credential tail has no given-name parts
-     * left, so the re-split has nothing to do: the surname-first order and
-     * the suffix are still pinned rather than falling back to Western order.
-     *
      * @return array<string, array{string, string, string, string, string, string}>
      */
     public static function singleTokenCredentialTailProvider(): array
@@ -174,10 +154,6 @@ class SurnameFirstTest extends TestCase
         $this->assertSame($suffix, $name->getSuffix(), "suffix for '$input'");
     }
 
-    /**
-     * a comma-less space-form name with a trailing credential: the credential is
-     * peeled to the suffix and the surname-first order is preserved for the rest
-     */
     public function testSpaceFormCredentialTailIsPeeled(): void
     {
         $name = (new Parser())->setSurnameFirst(true)->parse('Kim Jong Un MD');
@@ -189,9 +165,7 @@ class SurnameFirstTest extends TestCase
     }
 
     /**
-     * surname-first takes the first token as the surname verbatim, so a Western
-     * particle-led name misparses by design: 'van' becomes the surname ('Van'),
-     * not a prefix. This locks the documented first-token limitation.
+     * The caller asserted first-token surname order, so Western particles may misparse.
      */
     public function testParticleLeadingInputHitsFirstTokenLimitation(): void
     {
@@ -227,8 +201,6 @@ class SurnameFirstTest extends TestCase
 
     public function testPeeledSalutationKeepsIgnoredConnectorVisible(): void
     {
-        // the peel rebuild must re-emit an unattributed connector so it stays
-        // visible in getParts(), matching the salutation-less form
         $name = (new Parser())->setSurnameFirst(true)->parse('Dr. Kim and Jong Un');
 
         $this->assertSame('Dr.', $name->getSalutation());

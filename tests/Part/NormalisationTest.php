@@ -38,11 +38,8 @@ class NormalisationTest extends TestCase
     }
 
     /**
-     * Long-token fast paths: at most 1024 bytes the mixed-case shape is
-     * preserved verbatim (a McDonald-shaped 300-char token survives), past
-     * it the token takes the one-pass title-case (no per-run callback), so
-     * the 1100-char token folds. The multibyte tail proves the fold is
-     * character-safe rather than byte-truncating.
+     * Mixed-case preservation stops at 1024 bytes; the multibyte tail checks
+     * that the fallback title-cases whole characters.
      */
     public function testLongMixedCaseTokenNormalizeFastPaths(): void
     {

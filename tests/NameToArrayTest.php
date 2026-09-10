@@ -47,7 +47,6 @@ class NameToArrayTest extends TestCase
     {
         $array = (new Parser())->parse('John Doe')->toArray();
 
-        // every key present even when the part is absent
         $this->assertSame(self::KEYS, array_keys($array));
         $this->assertSame('', $array['salutation']);
         $this->assertSame('', $array['initials']);
