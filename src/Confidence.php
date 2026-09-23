@@ -9,10 +9,9 @@ use Iliaal\NameParser\Mapper\SalutationMapper;
 use Iliaal\NameParser\Mapper\SuffixMapper;
 
 /**
- * Advisory pass: flags inputs where a token collides with a credential AND the
+ * Advisory pass: flags inputs where a token collides with a credential and the
  * casing signal is uninformative (uniform-case input, or a lowercase token), so
- * the import pipeline can route the row to manual review instead of trusting a
- * silently-chosen first/last split.
+ * an import pipeline can route the row to manual review.
  */
 class Confidence
 {
@@ -22,9 +21,8 @@ class Confidence
      *
      * Nickname delimiters and whitespace mirror the Parser configuration the
      * input was parsed with (Name::getConfidence() forwards the stored
-     * values): decoration mapping and comma splitting then agree with the
-     * parse instead of silently falling back to defaults. Null keeps the
-     * historical default-config behavior.
+     * values), so decoration mapping and comma splitting agree with the
+     * parse. Null uses the default configuration.
      *
      * @param  array<int|string, string>|null  $suffixes
      * @param  array<int|string, string>|null  $salutations
@@ -154,10 +152,9 @@ class Confidence
     }
 
     /**
-     * Token-split pattern for the configured whitespace: null keeps the
-     * historical default-config behavior; otherwise the split mirrors the
-     * Parser's whitespace handling for the same input (an empty set collapses
-     * nothing, so plain spaces still separate, matching tokenizeWords()).
+     * Token-split pattern for the configured whitespace, mirroring the
+     * Parser; null uses the default configuration. An empty set collapses
+     * nothing, so plain spaces still separate, matching tokenizeWords().
      */
     private static function tokenSplitPattern(?string $whitespace, bool $withComma): string
     {

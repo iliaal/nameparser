@@ -9,12 +9,12 @@
 Parse a string containing a full name into its parts (salutation, first name,
 middle names, initials, last name with prefixes, suffix, nickname).
 
-> **Fork lineage.** This is a fork of
-> [theiconic/name-parser](https://github.com/theiconic/name-parser) (dormant
-> since ~2020), built on top of the modernization done by
-> [codebyzach/name-parser](https://github.com/CodeByZach/name-parser). It adds
-> **casing- and credential-aware parsing** and a **confidence/ambiguity signal**,
-> and targets PHP 8.3+.
+This is a fork of
+[theiconic/name-parser](https://github.com/theiconic/name-parser) (dormant
+since ~2020), built on the modernization in
+[codebyzach/name-parser](https://github.com/CodeByZach/name-parser). It adds
+casing- and credential-aware parsing and a confidence/ambiguity signal, and
+targets PHP 8.3+.
 
 ## Why this fork
 
@@ -29,52 +29,44 @@ professional and clinician name lists:
    the Vietnamese surname **"Do"** and given name **"Vi"** were consumed as the
    credentials DO / VI.
 
-This fork fixes both and adds an advisory confidence pass for the genuinely
-ambiguous cases.
+This fork fixes both and adds an advisory confidence pass for the ambiguous
+cases.
 
 ### What changed
 
-- **Casing as a signal.** An ambiguous token (`Do`, `Vi`, `Ma`, roman numerals,
-  two-letter credentials) is treated as a credential only when written ALL-CAPS
-  (`DO`, `VI`); Title- or lower-case keeps it as a name part, and normal name
-  casing turns lowercase `vi` into `Vi` in the output. People write credentials
-  in caps and names in title case, so the original casing carries the signal
-  that lowercasing discarded.
-- **Terminal-token guard.** A lone name-colliding token in a comma given-name
-  segment is kept as a name rather than emptied into a credential, unless its
-  casing reads as a credential.
-- **Confidence assessor.** When a token matches a credential but the casing is
-  uninformative (uniform-case input, or a lowercase token), `Confidence::assess()`
-  flags the input so you can route it to manual review instead of trusting the
-  split.
-- **Expanded English dictionary** (inherited from the CodeByZach fork): DDS, DO,
-  DVM, PsyD, LCSW, MSW, MBA, EMBA, Esq, roman numerals VI to X, `Hon.`, and more.
-- **Nursing and allied-health credentials.** RN, NP, PharmD, APRN, PA-C, OTR/L,
-  and 30+ more, mined by frequency from the NPI registry, so a trailing
-  credential no longer leaks into the first name.
-- **Unclosed nickname delimiter.** An opening `(` or quote with no matching
-  close no longer swallows the surname (`"John (Bob Smith"` keeps `Smith`).
-- **All-caps short names.** Under uniform-uppercase input the caps cannot mark a
-  token as initials, so a two-letter given name is kept as a name instead of
-  being split (`"JO ANDERSON"` keeps `Jo`, not `J` + initial `O`). Mixed-case
-  combined initials still split (`"JM Walker"` to `J` `M` Walker).
-- **Comma middle names.** Everything after the first comma is the given-name
-  segment, so a comma-separated middle name is retained (`"Smith, John, Robert"`
-  keeps `Robert`) while trailing credentials are still stripped.
-- **Particles short enough to read as initials.** A surname particle of one or
-  two letters was claimed as an initial before the surname mapper could bind it,
-  dropping it from the name: Irish `"Éamon Ó Cuív"` returned surname `Cuív`, and
-  a capitalised continental particle (`"Jean DE Vries"`, `"Mary LE Blanc"`) split
-  into initials `D E` and `L E`. Both keep the particle now. Irish `Ó`, `Ní`,
-  `Nic`, `Uí`, `Ua`, and `Mhic` are in the default dictionary and render
-  capitalised.
-- **English honorifics that are also surnames.** `Dame`, `Lady`, `Lord`,
-  `Pastor`, `Professor`, `Reverend`, and `Rt Hon` are in the default dictionary,
-  so `"Lord Ashcroft"` reads as a title plus surname instead of a first name plus
-  surname. `Rt Hon` also matches its abbreviated and article-led forms
+- An ambiguous token (`Do`, `Vi`, `Ma`, roman numerals, two-letter credentials)
+  is a credential only when written ALL-CAPS (`DO`, `VI`). Title or lower case
+  keeps it as a name part, and lowercase `vi` renders as `Vi`. People write
+  credentials in caps and names in title case, so the original casing carries
+  the signal that lowercasing discarded.
+- A lone name-colliding token in a comma given-name segment stays a name unless
+  its casing reads as a credential.
+- `Confidence::assess()` flags input where a token matches a credential but the
+  casing is uninformative (uniform-case input, or a lowercase token), so you can
+  route it to manual review.
+- The English dictionary includes DDS, DO, DVM, PsyD, LCSW, MSW, MBA, EMBA, Esq,
+  roman numerals VI to X, `Hon.`, and more, inherited from the CodeByZach fork.
+- Nursing and allied-health credentials (RN, NP, PharmD, APRN, PA-C, OTR/L, and
+  30+ more), mined by frequency from the NPI registry, no longer leak into the
+  first name.
+- An opening `(` or quote with no matching close no longer swallows the surname
+  (`"John (Bob Smith"` keeps `Smith`).
+- Uniform-uppercase input can't mark a token as initials, so a two-letter given
+  name stays a name (`"JO ANDERSON"` keeps `Jo`, not `J` + initial `O`).
+  Mixed-case combined initials still split (`"JM Walker"` to `J` `M` Walker).
+- Everything after the first comma is the given-name segment, so a
+  comma-separated middle name is kept (`"Smith, John, Robert"` keeps `Robert`)
+  while trailing credentials are still stripped.
+- Surname particles of one or two letters keep their place in the surname
+  instead of becoming initials: Irish `"Éamon Ó Cuív"` keeps `Ó Cuív`, and
+  capitalised continental particles (`"Jean DE Vries"`, `"Mary LE Blanc"`) no
+  longer split into initials `D E` and `L E`. Irish `Ó`, `Ní`, `Nic`, `Uí`,
+  `Ua`, and `Mhic` are in the default dictionary and render capitalised.
+- `Dame`, `Lady`, `Lord`, `Pastor`, `Professor`, `Reverend`, and `Rt Hon` are in
+  the default dictionary, so `"Lord Ashcroft"` reads as a title plus surname.
+  `Rt Hon` also matches its abbreviated and article-led forms
   (`"Rt. Hon. Boris Johnson"`, `"The Rt Hon Boris Johnson"`). Several of these
-  are real surnames as well, which is why the confidence pass flags the bare
-  two-token form.
+  are also real surnames, so the confidence pass flags the bare two-token form.
 
 ## Requirements
 
@@ -103,7 +95,7 @@ $name->getSuffix();       // "DDS"
 $name->getFullName();     // "Jane A. Doe"
 ```
 
-Beyond the example above, `Name` also exposes `getMiddlename()`, `getNickname()`,
+`Name` also exposes `getMiddlename()`, `getNickname()`,
 `getLastnamePrefix()`, `getGivenName()`, `getAll()`, `toArray()`,
 `getSalutations()`, `isJoint()`, `getPartner()`, `getConfidence()`, and `getSource()`. `getLastname(true)` returns the surname
 without any particle prefix; the default `getLastname()` already includes
@@ -112,8 +104,8 @@ prefixes.
 ### Structured output
 
 `toArray()` returns every part under a fixed key set, with an empty string for
-any part that is absent. Unlike `getAll()`, which omits empty parts and varies
-its keys, this shape is safe to consume without existence checks:
+any part that is absent. Unlike `getAll()`, which omits empty parts, it needs no
+existence checks:
 
 ```php
 $parser->parse('Dr. Jane A. Doe DDS')->toArray();
@@ -125,7 +117,7 @@ $parser->parse('Dr. Jane A. Doe DDS')->toArray();
 // ]
 ```
 
-Note that `lastname` already includes any particle prefix (`de la Torre`);
+`lastname` already includes any particle prefix (`de la Torre`);
 `lastname_prefix` is a convenience extract, not a component to prepend.
 
 ### Joint names
@@ -159,8 +151,8 @@ person and stay in one entry (`Rev. Dr John Doe` gives `['Rev. Dr.']`), and a
 name with no honorific gives an empty list. `Mr. & Mrs.` normalizes to the same
 value as `Mr. and Mrs.`.
 
-`getPartner()` hands back that second person as a `Name` instead, so you can read
-the parts you need rather than assembling them:
+`getPartner()` returns that second person as a `Name`, so you can read the parts
+you need instead of assembling them:
 
 ```php
 $partner = $name->getPartner();     // Name, or null when isJoint() is false
@@ -203,8 +195,8 @@ $household = array_values(array_filter(
 ### Confidence / ambiguity
 
 For batch imports where a wrong split is a data-integrity problem, check whether
-the input was decidable from its casing. The signal is available two ways: as a
-standalone pre-check on a raw string, or on the parsed result itself.
+the input was decidable from its casing, either as a standalone pre-check on a
+raw string or on the parsed result.
 
 ```php
 use Iliaal\NameParser\Confidence;
@@ -221,9 +213,9 @@ if ($result['ambiguous']) {
 }
 ```
 
-`getConfidence()` is read-only and does not change what `parse()` returns; it is
-an advisory pass you opt into. A mixed-case input like `"Nguyen, Vi"` stays
-unflagged; the title-case `Vi` resolves to the given name.
+`getConfidence()` is read-only and does not change what `parse()` returns. A
+mixed-case input like `"Nguyen, Vi"` stays unflagged; the title-case `Vi`
+resolves to the given name.
 
 A suffix, nickname, or empty trailing comma does not settle a two-part
 salutation collision: `"Lord Ashcroft MD"`, `"Lord Ashcroft (Bob)"`, and
@@ -233,23 +225,25 @@ content on both sides, as in `"Lord, Ashcroft"`, resolves it.
 For a non-default language set, standalone `Confidence::assess($string)` still
 uses the English salutation scope and the full ambiguous-suffix table.
 `Name::getConfidence()` uses the parser's configured suffixes, salutations, and
-token boundaries. This includes custom whitespace rules. Prefer that method
-when you need confidence for an actual parse. Standalone callers can scope the
+token boundaries, including custom whitespace rules, so prefer it when you need
+confidence for an actual parse. Standalone callers can scope the
 dictionaries with `Confidence::assess($string, $parser->getSuffixes(),
 $parser->getSalutations())`; standalone tokenization still splits on whitespace
 and commas.
 
-> **Uniform-case limitation.** Disambiguation keys off casing, so both all-caps
-> legacy data and all-lowercase input are ambiguous to the confidence pass. The
-> parser treats an ambiguous ALL-CAPS trailing token as a credential, but keeps
-> the lowercase form as a name part and normalizes its casing. Under uniform
-> uppercase, Confidence flags a token only when it is name-leaning (`Do`, `Vi`,
-> `Ma`, `Ba`, `Lac`) or a Census surname collision (`II`, `III`, `IV`, `MBA`);
-> clean credentials that are not also names (`RN`, `PT`, `OD`, and other roman
-> numerals such as `VII`) are left unflagged to keep review volume manageable on
-> all-caps datasets. All-lowercase input flags any credential collision, clean
-> ones included: the parser keeps a lowercase token as a name part, so a genuine
-> lowercase credential there would be a wrong split worth routing to review.
+Disambiguation keys off casing, so both all-caps legacy data and all-lowercase
+input are ambiguous to the confidence pass. The parser treats an ambiguous
+ALL-CAPS trailing token as a credential, but keeps the lowercase form as a name
+part and normalizes its casing:
+
+- Under uniform uppercase, Confidence flags a token only when it is name-leaning
+  (`Do`, `Vi`, `Ma`, `Ba`, `Lac`) or a Census surname collision (`II`, `III`,
+  `IV`, `MBA`). Credentials that are not also names (`RN`, `PT`, `OD`, and other
+  roman numerals such as `VII`) stay unflagged to keep review volume manageable
+  on all-caps datasets.
+- All-lowercase input flags any credential collision. The parser keeps a
+  lowercase token as a name part, so a real lowercase credential there would be
+  a wrong split worth routing to review.
 
 ### Languages
 
@@ -311,6 +305,8 @@ instead of tokenizing the source again. Explicitly supplied token arrays are
 also limited to 65,536 entries and 1,048,576 aggregate token bytes; supplying
 tokens does not bypass validation of the original string.
 
+### Ambiguous inputs
+
 Some inputs have no structural signal. A comma followed only by credentials can
 mean full name plus credentials (`Jane Doe, MD`) or surname plus credentials
 (`Hidalgo Castillo, MD`). The parser keeps the left side in Western order in
@@ -319,16 +315,14 @@ that case. Use an explicit given-name segment, for example
 surname-only field.
 
 An anglicised Irish surname with the fada dropped is undecidable the same way.
-`Eamon O Cuiv` and `John F Kennedy` have identical structure, and casing offers
-no tie-break since both are capital letters, so a bare `O` between spaces stays a
-middle initial. The fada form `Ó` resolves as a particle, and the joined
+`Eamon O Cuiv` and `John F Kennedy` have identical structure and casing, so a
+bare `O` between spaces stays a middle initial. The fada form `Ó` resolves as a particle, and the joined
 apostrophe form (`O'Cuiv`) is a single token that never needed one.
 
 Two-token surnames without particles are also ambiguous in space-separated names.
 `Jennifer Chen Wu` and `Mary Jo Li` share the same token structure, but one wants
 `Chen Wu` as a surname while the other wants `Jo` as a middle name. The parser
-keeps the existing compound-surname heuristic for two-character terminal
-surnames.
+applies a compound-surname heuristic for two-character terminal surnames.
 
 Unknown trailing credentials follow the same casing rule as the ambiguous
 tokens. When a known credential anchors the tail and the input is mixed-case, an
@@ -337,22 +331,21 @@ and `Smith, John, MD, FACS` keep both in the suffix. A pure all-caps segment
 with no prior dictionary anchor is kept as a name (`Smith, JOHN, MD` → first
 `John`, suffix `MD`), because it is indistinguishable from an all-caps given
 name. Prefer the known credential first when the unknown stands alone
-(`Smith, MD, FACS`). Uniform all-caps rows cannot recover unknown credentials;
-with no case signal an unknown token could equally be a surname, so it stays in
+(`Smith, MD, FACS`). Uniform all-caps rows cannot recover unknown credentials:
+with no case signal, an unknown token could equally be a surname, so it stays in
 the name.
 
 `getFullName()` and `toArray()['full_name']` are the given name plus surname only
 (no salutation, nickname, or suffix). `__toString()` is the richer display line
 from `getAll(true)` (salutation through suffix, nickname wrapped). Both drop
-comma structure and are not guaranteed to re-parse to the same fields, so treat
-them as output, not as a round-trippable serialization.
+comma structure and may not re-parse to the same fields, so treat them as
+display output only.
 
 ### Performance
 
 Reuse one `Parser` across a batch rather than constructing a new one per row.
-The parser memoizes its merged dictionaries, its mapper pipeline, and the
-comma-segment sub-parsers on first use, so a shared instance amortizes that setup
-across every `parse()` call.
+The parser memoizes its merged dictionaries, mapper pipeline, and comma-segment
+sub-parsers on first use, so a shared instance pays that setup cost once.
 
 ## Development
 

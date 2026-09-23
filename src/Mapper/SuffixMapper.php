@@ -18,8 +18,7 @@ class SuffixMapper extends AbstractMapper
     /**
      * Suffix keys that also occur as real given names / surnames (Vietnamese
      * "Do"/"Vi", Chinese "Ma", roman numerals, short allied-health creds).
-     * These get casing + position disambiguation; everything else keeps the
-     * original always-strip behavior.
+     * These get casing and position disambiguation; all other keys always strip.
      */
     public const array AMBIGUOUS_KEYS = [
         'do' => true, 'vi' => true, 'vii' => true, 'viii' => true,
@@ -31,9 +30,8 @@ class SuffixMapper extends AbstractMapper
     ];
 
     /**
-     * The subset of AMBIGUOUS_KEYS that lean toward being a real name rather
-     * than a credential. Used by Confidence to decide whether an uppercase
-     * token in uniform-case input is genuinely undecidable: an uppercase "DO"
+     * The subset of AMBIGUOUS_KEYS that lean toward a real name. Confidence
+     * flags these as undecidable in uniform-case input: an uppercase "DO"
      * could be the surname Do, but an uppercase "RN" is almost always a cred.
      */
     public const array NAME_LEANING_KEYS = [
@@ -42,12 +40,11 @@ class SuffixMapper extends AbstractMapper
 
     /**
      * AMBIGUOUS_KEYS that also occur as real US surnames per Census data (Ii,
-     * Iv, Mba and the related roman numerals). Distinct from NAME_LEANING_KEYS:
-     * under any single casing these read as a credential, but in uniform-case
-     * input where casing carries no signal they could equally be a surname, so
-     * Confidence treats an all-caps occurrence as undecidable. Clean creds that
-     * are not real names (Rn, Pt, Od...) stay suppressed to keep review noise
-     * down on the all-caps datasets this parser targets.
+     * Iv, Mba and the related roman numerals). Unlike NAME_LEANING_KEYS these
+     * read as credentials under mixed casing, but uniform-case input could
+     * equally mean a surname, so Confidence flags an all-caps occurrence.
+     * Credentials that are not real names (Rn, Pt, Od...) stay unflagged to
+     * keep review volume down on all-caps datasets.
      */
     public const array SURNAME_COLLIDING_KEYS = [
         'ii' => true, 'iii' => true, 'iv' => true, 'mba' => true,

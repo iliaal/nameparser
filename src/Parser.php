@@ -446,15 +446,12 @@ class Parser
     }
 
     /**
-     * Text::isUnknownCredentialCandidate() over the per-parse memo, so the
-     * token's letters are extracted once per parse instead of once per
-     * segment scan. Mirrors the Text definition (bracket/quote wrap,
-     * all-caps with case signal, >= 2 letters); Text stays canonical.
+     * Memoized Text::isUnknownCredentialCandidate(), so each token's letters
+     * are extracted once per parse. Text stays the canonical definition.
      */
     private function isMemoizedUnknownCandidate(string $token): bool
     {
-        // byte check: the wrap characters are ASCII, which never appear inside
-        // a multibyte sequence of valid UTF-8 input
+        // Bytewise is safe: ASCII never appears inside a valid UTF-8 multibyte sequence.
         if (strpbrk($token, '()[]{}<>"\'') !== false) {
             return false;
         }
@@ -469,9 +466,7 @@ class Parser
     }
 
     /**
-     * Text::isCredentialTailRider() over the per-parse memo: the expensive
-     * letters() scan is shared with the memoized analysis, and the comparison
-     * itself is Text's expression verbatim. Text stays canonical.
+     * Memoized Text::isCredentialTailRider(). Text stays the canonical definition.
      */
     private function isMemoizedCredentialRider(string $token): bool
     {
@@ -481,12 +476,9 @@ class Parser
     }
 
     /**
-     * true when every cased token in the raw input is uppercase, so casing
-     * carries no signal. Judged over the whole comma-bearing string, matching
-     * the mapper-level uniform-uppercase gates. Runs over the per-parse
-     * token-analysis memo (same decision as Text::isUniformUpperTokens(),
-     * which stays canonical) so the gate shares each token's single
-     * letters() scan with the credential checks (np-r2-05).
+     * true when every cased token in the whole comma-bearing input is
+     * uppercase, so casing carries no signal. Memoized
+     * Text::isUniformUpperTokens(), which stays the canonical definition.
      */
     private function isUniformUpperInput(string $name): bool
     {
@@ -677,14 +669,10 @@ class Parser
      * set the mappers for this parser.
      *
      * Only the single-segment (non-comma) pipeline uses this list. Comma input
-     * ("Last, First") is parsed by dedicated surname/given-name sub-parsers
-     * (getFirstSegmentParser/getSecondSegmentParser) whose lists are built
-     * from the same SegmentParserFactory element builders as the default
-     * pipeline, so a custom list set here does not affect comma
-     * forms (and is never silently half-applied: segment behavior is pinned by
-     * test). setSurnameFirst(true) routes comma-less input through those same
-     * sub-parsers, so a custom list does not apply on that path either. The
-     * language dictionaries do propagate to the sub-parsers.
+     * ("Last, First") and setSurnameFirst(true) go through dedicated
+     * surname/given-name sub-parsers built by SegmentParserFactory, so a
+     * custom list does not apply there. The language dictionaries do
+     * propagate to the sub-parsers.
      *
      * Name::getConfidence() always uses the language-merged suffix dictionary
      * (getSuffixes()), not a custom SuffixMapper's constructor map.
@@ -782,16 +770,14 @@ class Parser
      * normalize the name: collapse the configured whitespace run, then strip
      * what must never reach the mappers.
      *
-     * Allowlist (np-cr-003): everything survives except C0/C1 and other Cc
-     * controls plus the bidi/format Cf characters that reorder or hollow out
-     * display text (U+061C, U+180E, U+200B-U+200F, U+202A-U+202E,
-     * U+2060-U+2064, U+2066-U+206F, U+FEFF). Stripped characters cannot
-     * inject terminal/log sequences, truncate NUL-sensitive consumers, or
-     * impersonate via bidi reordering; letters, marks, numbers, punctuation,
-     * symbols, and separators pass through untouched (no NFKC: "ﬁ" stays
-     * "ﬁ"). Note a custom whitespace set that excludes a control (e.g. "\t")
-     * still loses it here; whitespace collapsing only decides what becomes a
-     * space.
+     * Strips Cc controls and the bidi/format Cf characters that reorder or
+     * hollow out display text (U+061C, U+180E, U+200B-U+200F, U+202A-U+202E,
+     * U+2060-U+2064, U+2066-U+206F, U+FEFF), so input cannot inject
+     * terminal/log sequences, truncate NUL-sensitive consumers, or spoof via
+     * bidi reordering. Everything else passes through untouched (no NFKC:
+     * "ﬁ" stays "ﬁ"). A control excluded from a custom whitespace set (e.g.
+     * "\t") is still stripped; whitespace collapsing only decides what
+     * becomes a space.
      */
     protected function normalize(string $name): string
     {
@@ -1138,9 +1124,8 @@ class Parser
 
     /**
      * read space-separated input surname-first (CJK order). Only affects names
-     * without a comma. This path routes through the comma-form surname/given
-     * sub-parsers, not the configurable mapper pipeline, so a custom setMappers()
-     * list does not apply here; there is no cache to drop.
+     * without a comma. This path uses the comma-form sub-parsers, so a custom
+     * setMappers() list does not apply.
      */
     public function setSurnameFirst(bool $surnameFirst): Parser
     {

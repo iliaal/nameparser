@@ -36,7 +36,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- A comma tail of unrecognized credentials no longer swallows the whole name. Since 1.3.0, `Christina Nemec, LMHP` read the tail as the given name and the rest as the surname, reporting first name `Lmhp` and last name `Christina Nemec`; the credential dictionary was the only thing standing between a correct split and a wrecked one, so `John Smith, MD` was fine while `John Smith, XYZ` was not. A tail whose tokens are all upper case, with at least one outside the dictionary, is now read as a credential run whenever the left side already carries a given name of its own. Spaced and numbered remainders ride along with it (`Lori Shelley, PHARM D`, `Leon Ellerb, OTA/L 2838`). First and last accuracy over 30,000 NPPES rows rises from 95.94% to 97.18%.
+- A comma tail of unrecognized credentials no longer swallows the whole name. Since 1.3.0, `Christina Nemec, LMHP` reported first name `Lmhp` and last name `Christina Nemec`; only dictionary credentials parsed correctly, so `John Smith, MD` worked while `John Smith, XYZ` did not. An all-uppercase tail with at least one token outside the dictionary now reads as a credential run when the left side already has its own given name, including spaced and numbered remainders (`Lori Shelley, PHARM D`, `Leon Ellerb, OTA/L 2838`). First and last accuracy over 30,000 NPPES rows rises from 95.94% to 97.18%.
 - The surname-only comma form is unchanged, so `Smith, JOHN, MD` still keeps `John` as the given name, `Hidalgo Castillo, Maria` still keeps the compound surname, and `Nguyen, VI` still reads `VI` the way the dictionary says. Uniform-case input carries no casing signal and is left alone, and a tail of nothing but single letters or digits never promotes on its own (`Samuel Assam, P`).
 
 ## [1.4.0] - 2026-08-04
@@ -64,7 +64,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- A conjunction the honorific could not absorb is no longer title-cased into a name part, so `Andrew and Sally Smith` reports the middle name `Sally` instead of `And Sally`, and `Mr. and Brad Smith` reports the first name `Brad` instead of `And`. A title directly after such a conjunction addresses a second person, so it is dropped from the getters too (`Mr. Andrew and Mrs Sally Smith` no longer carries `Mrs` as a middle name). Both are marked as `Part\Ignored`, which no getter exports, so the text is still reachable through `Name::getParts()`. The parser still does not identify the second person: `isJoint()` and `getPartner()` need a title on both sides of the conjunction, and the second given name stays where it lands.
+- A conjunction the honorific cannot absorb is no longer title-cased into a name part: `Andrew and Sally Smith` reports middle name `Sally` instead of `And Sally`, and `Mr. and Brad Smith` reports first name `Brad` instead of `And`. A title right after such a conjunction addresses a second person and is dropped from the getters too (`Mr. Andrew and Mrs Sally Smith` no longer carries `Mrs` as a middle name). Both are marked `Part\Ignored`, which no getter exports but `Name::getParts()` still returns. `isJoint()` and `getPartner()` still need a title on both sides of the conjunction, and the second given name stays where it lands.
 - Every word of an unattributed multi-word title is ignored after a conjunction, so `Mr. Andrew and His Honour Sally Smith` keeps only `Sally` as the middle name.
 - A leading credential in a comma given-name segment no longer authorizes a later uppercase given name as an unknown credential (`Smith, MD John PAUL` keeps middle name `Paul` and suffix `MD`).
 - `Name::isJoint()` now requires two non-empty salutation groups rather than reporting true for a manually constructed orphan connector.
@@ -173,7 +173,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- `Name::toArray()` returns every part under a fixed key set (empty string when absent), a machine-readable shape that is safe to consume without existence checks, unlike `getAll()`.
+- `Name::toArray()` returns every part under a fixed key set (empty string when absent), so unlike `getAll()` it needs no existence checks.
 - `Name::getConfidence()` exposes the advisory confidence signal on the parsed result, derived from the same input the parser saw. `Parser::parse()` output is unchanged; the check is opt-in.
 - Confidence now flags all-caps tokens that collide with Census surnames (II, III, IV, MBA) in uniform-case input, in addition to the existing name-leaning keys.
 - Two-letter given names in all-caps input are kept as names instead of being split into initials; "JO ANDERSON" keeps first name Jo. Mixed-case combined initials like "JM Walker" still split.

@@ -1,8 +1,7 @@
-# Two-layer forward-compatibility gate (see composer check:php85). This file
-# analyses as PHP 8.5 for language-level and stub-precision drift. It does NOT
-# cover internal-method deprecations (PHPStan 2.2 stubs carry no #[Deprecated]
-# on Reflection::*::setAccessible()): those are pinned by the banned-call
-# check in composer.json instead.
+# PHP 8.5 forward-compatibility gate for language-level and stub drift (see
+# composer check:php85). PHPStan 2.2 stubs carry no #[Deprecated] on
+# Reflection::*::setAccessible(), so the banned-call check in composer.json
+# covers internal-method deprecations instead.
 includes:
     - phpstan.neon.dist
 
