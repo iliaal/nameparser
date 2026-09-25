@@ -42,6 +42,8 @@ class NicknameMapper extends AbstractMapper
      */
     private array $lastCloserIndex = [];
 
+    private string $quoteTrimCharacters = '';
+
     /**
      * @param  array<string, string>  $delimiters
      */
@@ -53,6 +55,8 @@ class NicknameMapper extends AbstractMapper
 
         // Reject delimiter keys that would make the Unicode regex invalid or match every token.
         $this->delimiters = Text::sanitizeNicknameDelimiters($this->delimiters);
+        $this->quoteTrimCharacters = (($this->delimiters['"'] ?? null) === '"' ? '"' : '')
+            . (($this->delimiters["'"] ?? null) === "'" ? "'" : '');
 
         $this->regexp = $this->buildRegexp();
     }
@@ -166,7 +170,7 @@ class NicknameMapper extends AbstractMapper
                 }
             }
 
-            $value = trim($part, '"\'');
+            $value = $this->quoteTrimCharacters === '' ? $part : trim($part, $this->quoteTrimCharacters);
 
             // Empty nickname parts would add spaces to getNickname().
             if ($value === '') {

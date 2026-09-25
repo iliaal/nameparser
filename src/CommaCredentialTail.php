@@ -47,6 +47,22 @@ final class CommaCredentialTail
         $pendingCandidateRuns = [];
         $credentialRunAnchored = false;
         $hasCredentialAnchor = false;
+        $hasPreservedName = false;
+
+        /**
+         * @param  array<int, AbstractPart|string>  $newParts
+         */
+        $appendParts = static function (array $newParts) use (&$parts, &$hasPreservedName): void {
+            foreach ($newParts as $part) {
+                $parts[] = $part;
+                if (! $hasPreservedName
+                    && is_string($part)
+                    && ! Text::isCredentialTailNoise($part)
+                    && Text::letters($part) !== '') {
+                    $hasPreservedName = true;
+                }
+            }
+        };
 
         foreach ($tailSegments as $segment) {
             $trimmed = trim($segment);
@@ -60,6 +76,15 @@ final class CommaCredentialTail
             }
 
             [$tokenClasses, $hasDictionarySuffix] = $this->classifyTokens($tokens, $uniformInput);
+            $preserveSingleLetterInitial = self::containsSingleLetterRoman($tokenClasses)
+                && $hasPreservedName;
+            $effectiveTokenClasses = $preserveSingleLetterInitial
+                ? array_values(array_filter(
+                    $tokenClasses,
+                    static fn(array $tokenClass): bool => ! self::isSingleLetterRoman($tokenClass),
+                ))
+                : $tokenClasses;
+            $hasDictionarySuffix = self::containsDictionaryCredential($effectiveTokenClasses);
 
             if ($hasDictionarySuffix) {
                 $hasCredentialAnchor = true;
@@ -67,18 +92,17 @@ final class CommaCredentialTail
 
             if (! self::isCredentialOnlySegment($tokenClasses)) {
                 // A name segment ends the credential run; unanchored candidates stay names.
-                array_push($parts, ...self::flattenCandidateRuns($pendingCandidateRuns, false));
+                $appendParts(self::flattenCandidateRuns($pendingCandidateRuns, false));
                 $pendingCandidateRuns = [];
 
                 // Use the suffix mapper so mixed segments follow the space-form policy.
                 if ($hasDictionarySuffix) {
-                    foreach (($this->mapSuffixes)(array_column($tokenClasses, 0), $uniformInput) as $part) {
-                        $parts[] = $part;
-                    }
+                    $appendParts(($this->mapSuffixes)(array_column($tokenClasses, 0), $uniformInput));
 
                     // Only a tail-ending run anchors the next segment: "MD John, PAUL" keeps PAUL.
-                    $tokenClassesCount = count($tokenClasses);
-                    $credentialRunAnchored = $tokenClasses[$tokenClassesCount - 1][1] !== TokenCredentialClass::Name;
+                    $effectiveCount = count($effectiveTokenClasses);
+                    $credentialRunAnchored = $effectiveTokenClasses[$effectiveCount - 1][1]
+                        !== TokenCredentialClass::Name;
 
                     continue;
                 }
@@ -87,9 +111,7 @@ final class CommaCredentialTail
 
                 [$headTokens, $trailingCandidates] = self::splitTrailingCandidates($tokenClasses);
 
-                foreach (($this->mapSuffixes)($headTokens, $uniformInput) as $part) {
-                    $parts[] = $part;
-                }
+                $appendParts(($this->mapSuffixes)($headTokens, $uniformInput));
 
                 if ($trailingCandidates !== []) {
                     $pendingCandidateRuns[] = $trailingCandidates;
@@ -98,31 +120,43 @@ final class CommaCredentialTail
                 continue;
             }
 
+            if ($preserveSingleLetterInitial && ! $hasDictionarySuffix) {
+                [$headTokens, $trailingCandidates] = self::splitTrailingCandidates($tokenClasses);
+                $appendParts($headTokens);
+                if ($trailingCandidates !== []) {
+                    $pendingCandidateRuns[] = $trailingCandidates;
+                }
+                $credentialRunAnchored = false;
+
+                continue;
+            }
             if ($hasDictionarySuffix) {
-                array_push($parts, ...self::flattenCandidateRuns($pendingCandidateRuns, true));
+                $appendParts(self::flattenCandidateRuns($pendingCandidateRuns, true));
                 $pendingCandidateRuns = [];
                 $credentialRunAnchored = true;
 
                 foreach ($tokenClasses as [$token, $class]) {
-                    $parts[] = $this->newCredentialSuffix($token, $class);
+                    if ($preserveSingleLetterInitial
+                        && self::isSingleLetterRoman([$token, $class])) {
+                        $appendParts([$token]);
+
+                        continue;
+                    }
+                    $appendParts([$this->newCredentialSuffix($token, $class)]);
                 }
 
                 continue;
             }
 
             if ($credentialRunAnchored) {
-                foreach ($tokens as $token) {
-                    $parts[] = new Suffix($token);
-                }
+                $appendParts(array_map(static fn(string $token): Suffix => new Suffix($token), $tokens));
             } else {
                 // A later anchor must not swallow all-caps given names: "Smith, JOHN, MD".
-                foreach ($tokens as $token) {
-                    $parts[] = $token;
-                }
+                $appendParts($tokens);
             }
         }
 
-        array_push($parts, ...self::flattenCandidateRuns($pendingCandidateRuns, false));
+        $appendParts(self::flattenCandidateRuns($pendingCandidateRuns, false));
 
         // Any tail anchor drops placeholders and punctuation across the whole
         // given side. The surname segment is never purged; no anchor means no purge.
@@ -277,6 +311,47 @@ final class CommaCredentialTail
         }
 
         return true;
+    }
+
+    /**
+     * @param  list<array{0: string, 1: TokenCredentialClass}>  $tokenClasses
+     */
+    private static function containsSingleLetterRoman(array $tokenClasses): bool
+    {
+        foreach ($tokenClasses as $tokenClass) {
+            if (self::isSingleLetterRoman($tokenClass)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array{0: string, 1: TokenCredentialClass}  $tokenClass
+     */
+    private static function isSingleLetterRoman(array $tokenClass): bool
+    {
+        [$token, $class] = $tokenClass;
+        $key = Text::key($token);
+
+        return $class === TokenCredentialClass::DictionaryCredential
+            && mb_strlen($key, 'UTF-8') === 1
+            && in_array($key, ['i', 'v', 'x'], true);
+    }
+
+    /**
+     * @param  list<array{0: string, 1: TokenCredentialClass}>  $tokenClasses
+     */
+    private static function containsDictionaryCredential(array $tokenClasses): bool
+    {
+        foreach ($tokenClasses as [, $class]) {
+            if ($class === TokenCredentialClass::DictionaryCredential) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -370,6 +370,56 @@ class RobustnessTest extends TestCase
     /**
      * @return array<string, array{string, string}>
      */
+    public static function emptyWhitespaceControlProvider(): array
+    {
+        return [
+            'C0' => ["Jo\x01hn Smith", 'John Smith'],
+            'C1 NEL' => ["John Smi\u{0085}th", 'John Smith'],
+            'C1 CSI' => ["John Smi\u{009B}th", 'John Smith'],
+            'bidi override' => ["John \u{202E}Smith", 'John Smith'],
+            'NUL' => ["Jo\x00hn Smith", 'John Smith'],
+        ];
+    }
+
+    #[DataProvider('emptyWhitespaceControlProvider')]
+    public function testEmptyWhitespaceStillStripsControlCharacters(string $input, string $expected): void
+    {
+        $name = (new Parser())->setWhitespace('')->parse($input);
+
+        $this->assertSame($expected, $name->getSource());
+        $this->assertSame($expected, $name->getFullName());
+        $this->assertSame($expected, $name->__toString());
+        $this->assertSame($expected, $name->toArray()['full_name']);
+    }
+
+    public function testDefaultWhitespaceStillStripsControlCharacters(): void
+    {
+        $name = (new Parser())->parse("Jo\x01hn\tSm\u{0085}ith");
+
+        $this->assertSame('John Smith', $name->getSource());
+        $this->assertSame('John Smith', $name->getFullName());
+    }
+
+    public function testEmptyWhitespacePreservesIntentionalTab(): void
+    {
+        $name = (new Parser())->setWhitespace('')->parse("Jo\tJohn Smith");
+
+        $this->assertSame("Jo\tJohn Smith", $name->getSource());
+        $this->assertSame("Jo\tJohn", $name->getFirstname());
+    }
+
+    public function testEmptyWhitespaceSanitizesCommaSegments(): void
+    {
+        $name = (new Parser())->setWhitespace('')->parse("Sm\x01ith, Jo\u{202E}hn");
+
+        $this->assertSame('Smith, John', $name->getSource());
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
     public static function gluedCloserPunctuationProvider(): array
     {
         return [

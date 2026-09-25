@@ -40,20 +40,16 @@ class Confidence
     ): array {
         Text::assertInputByteBudget($original);
         $validUtf8 = mb_check_encoding($original, 'UTF-8');
+        $normalized = self::normalize($original, $whitespace);
 
         if ($tokens !== null) {
             self::assertSuppliedTokenBudgets($tokens);
-            self::assertOriginalTokenBudget($original, $validUtf8, $whitespace);
+            self::assertOriginalTokenBudget($normalized, self::delimiters($nicknameDelimiters));
         }
 
         if (! $validUtf8) {
             if ($tokens === null) {
-                $tokens = preg_split(
-                    '/[\s,]+/',
-                    trim($original),
-                    Text::MAX_INPUT_TOKENS + 1,
-                    PREG_SPLIT_NO_EMPTY,
-                ) ?: [];
+                $tokens = self::tokenize($normalized, self::delimiters($nicknameDelimiters));
                 Text::assertInputTokenCount(count($tokens));
             }
 
@@ -61,12 +57,7 @@ class Confidence
         }
 
         if ($tokens === null) {
-            $tokens = preg_split(
-                self::tokenSplitPattern($whitespace, true),
-                trim($original),
-                Text::MAX_INPUT_TOKENS + 1,
-                PREG_SPLIT_NO_EMPTY,
-            ) ?: [];
+            $tokens = self::tokenize($normalized, self::delimiters($nicknameDelimiters));
             Text::assertInputTokenCount(count($tokens));
         }
 
@@ -110,7 +101,7 @@ class Confidence
             // name-bearing content on both sides.
             $nameTokens = self::rawNameTokens(self::mapDecorations($tokens, $suffixes, $nicknameDelimiters));
             if (count($nameTokens) === 2
-                && ! self::hasDecidingStructuralComma($original, $suffixes, $nicknameDelimiters, $whitespace)) {
+                && ! self::hasDecidingStructuralComma($normalized, $suffixes, $nicknameDelimiters)) {
                 $notes["'{$lead}' could be a name or a salutation; nothing in the input decides it"] = true;
             }
         }
@@ -136,39 +127,309 @@ class Confidence
         }
     }
 
-    private static function assertOriginalTokenBudget(string $original, bool $validUtf8, ?string $whitespace = null): void
-    {
-        if (strlen($original) < (Text::MAX_INPUT_TOKENS * 2) + 1) {
+    /**
+     * @param  array<string, string>  $nicknameDelimiters
+     */
+    private static function assertOriginalTokenBudget(
+        string $normalized,
+        array $nicknameDelimiters,
+    ): void {
+        if (strlen($normalized) < (Text::MAX_INPUT_TOKENS * 2) + 1) {
             return;
         }
 
-        $tokens = preg_split(
-            $validUtf8 ? self::tokenSplitPattern($whitespace, true) : '/[\s,]+/',
-            trim($original),
-            Text::MAX_INPUT_TOKENS + 1,
-            PREG_SPLIT_NO_EMPTY,
-        ) ?: [];
-        Text::assertInputTokenCount(count($tokens));
+        Text::assertInputTokenCount(count(self::tokenize($normalized, $nicknameDelimiters)));
     }
 
     /**
-     * Token-split pattern for the configured whitespace, mirroring the
-     * Parser; null uses the default configuration. An empty set collapses
-     * nothing, so plain spaces still separate, matching tokenizeWords().
+     * @param  array<string, string>|null  $delimiters
+     * @return array<string, string>
      */
-    private static function tokenSplitPattern(?string $whitespace, bool $withComma): string
+    private static function delimiters(?array $delimiters): array
     {
-        if ($whitespace === null) {
-            return $withComma ? '/[\s,]+/u' : '/\s+/u';
+        return $delimiters === null || $delimiters === []
+            ? NicknameMapper::DEFAULT_DELIMITERS
+            : $delimiters;
+    }
+
+    private static function normalize(string $original, ?string $whitespace): string
+    {
+        $whitespace ??= " \r\n\t";
+
+        // Parser scrubs invalid bytes only when its whitespace configuration
+        // is valid UTF-8; invalid configuration retains bytewise semantics.
+        if (mb_check_encoding($whitespace, 'UTF-8')) {
+            $original = mb_scrub($original, 'UTF-8');
         }
 
-        if ($whitespace === '') {
-            return $withComma ? '/[ ,]+/u' : '/ +/u';
+        $normalized = trim($original);
+        $normalized = str_replace("\x00", '', $normalized);
+
+        $preserveTab = $whitespace === '';
+        if ($whitespace !== '') {
+            $unicode = mb_check_encoding($normalized, 'UTF-8')
+                && mb_check_encoding($whitespace, 'UTF-8') ? 'u' : '';
+            $pattern = '/[' . preg_quote($whitespace, '/') . ']+/' . $unicode;
+            $normalized = preg_replace($pattern, ' ', $normalized) ?? $normalized;
+            $normalized = trim($normalized);
         }
 
-        $class = '[' . preg_quote($whitespace, '/') . ($withComma ? ',' : '') . ']+';
+        $controlPattern = '/[\p{Cc}\x{061C}\x{180E}\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{206F}\x{FEFF}]/u';
+        if ($preserveTab) {
+            return preg_replace_callback(
+                $controlPattern,
+                static fn(array $matches): string => $matches[0] === "\t" ? "\t" : '',
+                $normalized,
+            ) ?? $normalized;
+        }
 
-        return '/' . $class . '/u';
+        return preg_replace($controlPattern, '', $normalized) ?? $normalized;
+    }
+
+    /**
+     * @param  array<string, string>  $nicknameDelimiters
+     * @return list<string>
+     */
+    private static function tokenize(string $normalized, array $nicknameDelimiters): array
+    {
+        if (! mb_check_encoding($normalized, 'UTF-8')) {
+            return self::tokenizeCommaSegments($normalized);
+        }
+
+        if (! str_contains($normalized, ',')) {
+            return self::tokenizeWords($normalized);
+        }
+        $delimiters = Text::sanitizeNicknameDelimiters($nicknameDelimiters);
+        if ($delimiters === []) {
+            return self::tokenizeCommaSegments($normalized);
+        }
+
+        foreach ($delimiters as $open => $close) {
+            if (strlen((string) $open) !== 1 || strlen((string) $close) !== 1) {
+                return self::tokenizeWithStructuralSplitter($normalized, $nicknameDelimiters);
+            }
+        }
+
+        return self::tokenizeAsciiDelimiters($normalized, $delimiters);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function tokenizeCommaSegments(string $normalized): array
+    {
+        $tokens = [];
+        $length = strlen($normalized);
+        $segmentStart = 0;
+        for ($position = 0; $position <= $length; $position++) {
+            if ($position !== $length && $normalized[$position] !== ',') {
+                continue;
+            }
+
+            array_push($tokens, ...self::tokenizeWords(substr($normalized, $segmentStart, $position - $segmentStart)));
+            Text::assertInputTokenCount(count($tokens));
+            $segmentStart = $position + 1;
+        }
+
+        return $tokens;
+    }
+
+    /**
+     * @param  array<string, string>  $nicknameDelimiters
+     * @return list<string>
+     */
+    private static function tokenizeWithStructuralSplitter(string $normalized, array $nicknameDelimiters): array
+    {
+        $tokens = [];
+        foreach (StructuralCommaSplitter::split($normalized, $nicknameDelimiters) as $segment) {
+            array_push($tokens, ...self::tokenizeWords($segment));
+            Text::assertInputTokenCount(count($tokens));
+        }
+
+        return $tokens;
+    }
+
+    /**
+     * @param  array<string, string>  $delimiters
+     * @return list<string>
+     */
+    private static function tokenizeAsciiDelimiters(string $normalized, array $delimiters): array
+    {
+        $pairs = [];
+        $symmetric = [];
+        foreach ($delimiters as $open => $close) {
+            $open = (string) $open;
+            $close = (string) $close;
+            if ($open === $close) {
+                $symmetric[$open] = true;
+            } else {
+                $pairs[$open] = $close;
+            }
+        }
+
+        $length = strlen($normalized);
+        $endPositions = [];
+        foreach ($symmetric as $delimiter => $_) {
+            $endPositions[$delimiter] = [];
+        }
+
+        $tokenStart = null;
+        for ($position = 0; $position <= $length; $position++) {
+            $byte = $position < $length ? $normalized[$position] : null;
+            if ($byte !== null && $byte !== ' ' && $byte !== ',') {
+                $tokenStart ??= $position;
+
+                continue;
+            }
+
+            if ($tokenStart === null) {
+                continue;
+            }
+
+            $closerStart = $position - 1;
+            foreach ($symmetric as $delimiter => $_) {
+                if ($closerStart < $tokenStart || $normalized[$closerStart] !== $delimiter) {
+                    continue;
+                }
+
+                if ($position - $tokenStart >= 2 && $normalized[$tokenStart] === $delimiter) {
+                    continue;
+                }
+
+                $endPositions[$delimiter][] = $closerStart;
+            }
+            $tokenStart = null;
+        }
+        $candidateIndexes = [];
+
+        /** @var list<array{0: string, 1: bool}> $closers */
+        $closers = [];
+        /** @var list<list<int>> $pendingCommas */
+        $pendingCommas = [];
+        /** @var array<string, true> $openSymmetric */
+        $openSymmetric = [];
+        /** @var array<int, true> $mask */
+        $mask = [];
+        $trackedCommas = 0;
+
+        for ($position = 0; $position < $length;) {
+            $depth = count($closers);
+            $byte = $normalized[$position];
+            if ($depth > 0) {
+                [$close, $isSymmetric] = $closers[$depth - 1];
+                if ($byte === $close
+                    && (! $isSymmetric || self::isAsciiTokenBoundary($normalized[$position + 1] ?? null))) {
+                    array_pop($closers);
+                    if ($isSymmetric) {
+                        array_pop($openSymmetric);
+                    }
+                    foreach (array_pop($pendingCommas) ?? [] as $commaPosition) {
+                        $mask[$commaPosition] = true;
+                    }
+                    ++$position;
+
+                    continue;
+                }
+            }
+
+            $canOpen = $depth < 128 && $trackedCommas < 65536;
+            if ($canOpen && isset($pairs[$byte])) {
+                $closers[] = [$pairs[$byte], false];
+                $pendingCommas[] = [];
+                ++$position;
+
+                continue;
+            }
+
+            $hasCloser = false;
+            if ($canOpen
+                && isset($symmetric[$byte])
+                && ! isset($openSymmetric[$byte])
+                && self::isAsciiTokenBoundary($position > 0 ? $normalized[$position - 1] : null)) {
+                $candidateIndex = $candidateIndexes[$byte] ?? 0;
+                $hasCloser = self::hasNextCandidate(
+                    $endPositions[$byte] ?? [],
+                    $candidateIndex,
+                    $position + 1,
+                );
+                $candidateIndexes[$byte] = $candidateIndex;
+            }
+
+            if ($hasCloser) {
+                $closers[] = [$byte, true];
+                $openSymmetric[$byte] = true;
+                $pendingCommas[] = [];
+                ++$position;
+
+                continue;
+            }
+
+            if ($byte === ',' && $depth > 0 && $trackedCommas < 65536) {
+                $pendingCommas[$depth - 1][] = $position;
+                ++$trackedCommas;
+            }
+            ++$position;
+        }
+
+        $tokens = [];
+        $segmentStart = 0;
+        for ($position = 0; $position <= $length; $position++) {
+            if ($position !== $length && ($normalized[$position] !== ',' || isset($mask[$position]))) {
+                continue;
+            }
+
+            array_push($tokens, ...self::tokenizeWords(substr($normalized, $segmentStart, $position - $segmentStart)));
+            Text::assertInputTokenCount(count($tokens));
+            $segmentStart = $position + 1;
+        }
+
+        return $tokens;
+    }
+
+    private static function isAsciiTokenBoundary(?string $character): bool
+    {
+        return $character === null || $character === ' ' || $character === ',';
+    }
+
+    /**
+     * @param  list<int>  $candidates
+     */
+    private static function hasNextCandidate(array $candidates, int &$index, int $minimum): bool
+    {
+        while (isset($candidates[$index]) && $candidates[$index] < $minimum) {
+            $index++;
+        }
+
+        return isset($candidates[$index]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function tokenizeWords(string $text): array
+    {
+        $tokens = [];
+        $length = strlen($text);
+        $tokenStart = null;
+        for ($position = 0; $position <= $length; $position++) {
+            if ($position !== $length && $text[$position] !== ' ') {
+                if ($tokenStart === null) {
+                    $tokenStart = $position;
+                }
+
+                continue;
+            }
+
+            if ($tokenStart === null) {
+                continue;
+            }
+
+            $tokens[] = substr($text, $tokenStart, $position - $tokenStart);
+            Text::assertInputTokenCount(count($tokens));
+            $tokenStart = null;
+        }
+
+        return $tokens;
     }
 
     /**
@@ -229,42 +490,25 @@ class Confidence
      * @param  array<string, string>|null  $nicknameDelimiters
      */
     private static function hasDecidingStructuralComma(
-        string $original,
+        string $normalized,
         ?array $suffixes,
         ?array $nicknameDelimiters = null,
-        ?string $whitespace = null,
     ): bool {
-        if (! str_contains($original, ',')) {
+        $segments = StructuralCommaSplitter::split($normalized, self::delimiters($nicknameDelimiters));
+        if (count($segments) < 2) {
             return false;
         }
 
-        $parts = (new NicknameMapper($nicknameDelimiters ?? []))->map(
-            self::splitCommaMarkers($original, $whitespace),
-        );
-
-        /** @var list<array<int, \Iliaal\NameParser\Part\AbstractPart|string>> $segments */
-        $segments = [[]];
-        $current = 0;
-        foreach ($parts as $part) {
-            if ($part === ',') {
-                $segments[] = [];
-                $current++;
-
-                continue;
-            }
-
-            $segments[$current][] = $part;
-        }
-
-        ['suffix' => $suffixMapper] = AbstractMapper::decorationAnalyzers(
+        ['suffix' => $suffixMapper, 'nickname' => $nicknameMapper] = AbstractMapper::decorationAnalyzers(
             $suffixes ?? English::SUFFIXES,
-            $nicknameDelimiters ?? [],
+            self::delimiters($nicknameDelimiters),
         );
 
         $firstNameBearing = null;
         $lastNameBearing = null;
         foreach ($segments as $index => $segment) {
-            if (self::rawNameTokens($suffixMapper->map($segment)) !== []) {
+            $parts = $suffixMapper->map($nicknameMapper->map(self::tokenizeWords($segment)));
+            if (self::rawNameTokens($parts) !== []) {
                 $firstNameBearing ??= $index;
                 $lastNameBearing = $index;
             }
@@ -273,44 +517,5 @@ class Confidence
         return $firstNameBearing !== null
             && $lastNameBearing !== null
             && $firstNameBearing !== $lastNameBearing;
-    }
-
-    /**
-     * Keep structural comma markers without allocating one array entry per
-     * empty segment in a delimiter-heavy row.
-     *
-     * @return list<string>
-     */
-    private static function splitCommaMarkers(string $original, ?string $whitespace = null): array
-    {
-        $chunks = preg_split(
-            self::tokenSplitPattern($whitespace, false),
-            trim($original),
-            Text::MAX_INPUT_TOKENS + 1,
-            PREG_SPLIT_NO_EMPTY,
-        ) ?: [];
-        $pieces = [];
-
-        foreach ($chunks as $chunk) {
-            $offset = 0;
-            $length = strlen($chunk);
-
-            while (($comma = strpos($chunk, ',', $offset)) !== false) {
-                if ($comma > $offset) {
-                    $pieces[] = substr($chunk, $offset, $comma - $offset);
-                }
-                if ($pieces === [] || end($pieces) !== ',') {
-                    $pieces[] = ',';
-                }
-
-                $offset = $comma + 1;
-            }
-
-            if ($offset < $length) {
-                $pieces[] = substr($chunk, $offset);
-            }
-        }
-
-        return $pieces;
     }
 }

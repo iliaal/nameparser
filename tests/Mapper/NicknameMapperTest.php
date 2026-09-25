@@ -5,6 +5,7 @@ namespace Tests\Iliaal\NameParser\Mapper;
 use Iliaal\NameParser\Mapper\NicknameMapper;
 use Iliaal\NameParser\Part\Nickname;
 use Iliaal\NameParser\Part\Salutation;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 class NicknameMapperTest extends AbstractMapperTestCase
 {
@@ -274,6 +275,28 @@ class NicknameMapperTest extends AbstractMapperTestCase
         $this->assertSame(
             ['John', 'Bob', 'Smith'],
             $mapper->map(['John', 'z..aBob', 'Smith']),
+        );
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function replacementDelimiterQuoteProvider(): array
+    {
+        return [
+            'leading literal quote' => ["['Twas]", "'Twas"],
+            'trailing literal quote' => ["['Twas']", "'Twas'"],
+        ];
+    }
+
+    #[DataProvider('replacementDelimiterQuoteProvider')]
+    public function testReplacementDelimitersPreserveLiteralQuoteContent(string $input, string $expected): void
+    {
+        $mapper = new NicknameMapper(['[' => ']']);
+
+        $this->assertSame(
+            self::canonicalParts([new Nickname($expected)]),
+            self::canonicalParts($mapper->map([$input])),
         );
     }
 

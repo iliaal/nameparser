@@ -775,9 +775,9 @@ class Parser
      * U+2060-U+2064, U+2066-U+206F, U+FEFF), so input cannot inject
      * terminal/log sequences, truncate NUL-sensitive consumers, or spoof via
      * bidi reordering. Everything else passes through untouched (no NFKC:
-     * "ﬁ" stays "ﬁ"). A control excluded from a custom whitespace set (e.g.
-     * "\t") is still stripped; whitespace collapsing only decides what
-     * becomes a space.
+     * "ﬁ" stays "ﬁ"). With an empty whitespace set, tab remains an intentional
+     * separator exception; all other controls are still stripped. Whitespace
+     * collapsing only decides what becomes a space.
      */
     protected function normalize(string $name): string
     {
@@ -788,19 +788,26 @@ class Parser
         // Strip NUL bytewise: it is the comma placeholder, and /u rejects invalid UTF-8.
         $name = str_replace("\x00", '', $name);
 
-        // Empty whitespace preserves bytes except NUL; an empty regex class would warn.
-        if ($whitespace === '') {
-            return $name;
+        if ($whitespace !== '') {
+            $name = preg_replace($this->normalizePattern($whitespace), ' ', $name) ?? $name;
+
+            // Custom edge whitespace becomes spaces only after the first trim().
+            return $this->stripControlChars(trim($name));
         }
 
-        $name = preg_replace($this->normalizePattern($whitespace), ' ', $name) ?? $name;
-
-        // Custom edge whitespace becomes spaces only after the first trim().
-        return $this->stripControlChars(trim($name));
+        return $this->stripControlChars($name, true);
     }
 
-    private function stripControlChars(string $name): string
+    private function stripControlChars(string $name, bool $preserveTab = false): string
     {
+        if ($preserveTab) {
+            return preg_replace_callback(
+                '/[\p{Cc}\x{061C}\x{180E}\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{206F}\x{FEFF}]/u',
+                static fn(array $matches): string => $matches[0] === "\t" ? "\t" : '',
+                $name,
+            ) ?? $name;
+        }
+
         return preg_replace(
             '/[\p{Cc}\x{061C}\x{180E}\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{206F}\x{FEFF}]/u',
             '',

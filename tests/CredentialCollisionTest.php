@@ -98,6 +98,8 @@ class CredentialCollisionTest extends TestCase
             'comma punctuated known credential'   => ['George Nasser, M.D.', 'George', 'Nasser', 'MD'],
 
             'uniform caps comma tail'             => ['NEMEC, CHRISTINA', 'Christina', 'Nemec', ''],
+            'internal apostrophe before suffix punctuation' => ["John D'Angelo MD'", 'John', "D'Angelo", 'MD'],
+            'comma form with internal apostrophe' => ["D'Angelo, John MD'", 'John', "D'Angelo", 'MD'],
         ];
     }
 
@@ -366,6 +368,10 @@ class CredentialCollisionTest extends TestCase
             'registry MI form I'     => ['Lapin, Michelle I', 'Michelle', 'I', ''],
             'registry MI form V'     => ['Nguyen, Dong V, DPM', 'Dong', 'V', 'DPM'],
             'control initial B'      => ['Lapin, Michelle B', 'Michelle', 'B', ''],
+            'isolated I after given' => ['Smith, Michelle, I', 'Michelle', 'I', ''],
+            'isolated V after given' => ['Smith, Michelle, V', 'Michelle', 'V', ''],
+            'isolated X after given' => ['Smith, Michelle, X', 'Michelle', 'X', ''],
+            'isolated lowercase i after given' => ['Smith, Michelle, i', 'Michelle', 'I', ''],
         ];
     }
 
