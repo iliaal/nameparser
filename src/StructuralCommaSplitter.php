@@ -164,7 +164,7 @@ final class StructuralCommaSplitter
 
         $length = strlen($name);
 
-        /** @var array<string, list<int>> $symmetricEnds */
+        /** @var array<string, int> $symmetricEnds */
         $symmetricEnds = [];
         if ($symmetric !== []) {
             $symmetricEnds = self::symmetricEndsAscii($name, $length, $symmetric);
@@ -218,14 +218,7 @@ final class StructuralCommaSplitter
             if ($canOpen
                 && isset($symmetric[$byte])
                 && self::isTokenBoundary($i > 0 ? $name[$i - 1] : null)) {
-                $hasCloser = false;
-                foreach ($symmetricEnds[$byte] ?? [] as $end) {
-                    if ($end >= $i + 1) {
-                        $hasCloser = true;
-
-                        break;
-                    }
-                }
+                $hasCloser = ($symmetricEnds[$byte] ?? -1) >= $i + 1;
 
                 if ($hasCloser && ! in_array($byte, $openQuotes, true)) {
                     $openQuotes[] = $byte;
@@ -257,15 +250,15 @@ final class StructuralCommaSplitter
     }
 
     /**
-     * Index token-final quotes, excluding self-balanced tokens that cannot
+     * Index the last token-final quote, excluding self-balanced tokens that cannot
      * close an earlier orphan opener.
      *
      * @param  array<string, true>  $symmetric
-     * @return array<string, list<int>>
+     * @return array<string, int>
      */
     private static function symmetricEndsAscii(string $name, int $length, array $symmetric): array
     {
-        /** @var array<string, list<int>> $symmetricEnds */
+        /** @var array<string, int> $symmetricEnds */
         $symmetricEnds = [];
         $tokenStart = null;
         for ($i = 0; $i <= $length; ++$i) {
@@ -288,7 +281,7 @@ final class StructuralCommaSplitter
                             continue;
                         }
 
-                        $symmetricEnds[$quote][] = $closerStart;
+                        $symmetricEnds[$quote] = $closerStart;
                     }
 
                     $tokenStart = null;
@@ -327,8 +320,8 @@ final class StructuralCommaSplitter
             $openersByFirst[$opener[0][0]][] = $opener;
         }
 
-        // Precompute closer offsets to avoid rescanning for every opener.
-        /** @var array<string, list<int>> $symmetricEnds */
+        // The last valid closer decides whether any closer exists after an opener.
+        /** @var array<string, int> $symmetricEnds */
         $symmetricEnds = [];
         if ($symmetric !== []) {
             $symmetricEnds = self::symmetricEndsChars($chars, $total, $symmetric);
@@ -382,14 +375,7 @@ final class StructuralCommaSplitter
                 $openLen = count($openChars);
 
                 if ($isSymmetric) {
-                    $hasCloser = false;
-                    foreach ($symmetricEnds[$close] ?? [] as $end) {
-                        if ($end >= $i + $openLen) {
-                            $hasCloser = true;
-
-                            break;
-                        }
-                    }
+                    $hasCloser = ($symmetricEnds[$close] ?? -1) >= $i + $openLen;
 
                     if (! $hasCloser || in_array($close, $openQuotes, true)) {
                         continue;
@@ -426,7 +412,7 @@ final class StructuralCommaSplitter
     /**
      * @param  list<string>  $chars
      * @param  array<string, true>  $symmetric
-     * @return array<string, list<int>>
+     * @return array<string, int>
      */
     private static function symmetricEndsChars(array $chars, int $total, array $symmetric): array
     {
@@ -444,7 +430,7 @@ final class StructuralCommaSplitter
             }
         }
 
-        /** @var array<string, list<int>> $symmetricEnds */
+        /** @var array<string, int> $symmetricEnds */
         $symmetricEnds = [];
         foreach (array_keys($symmetric) as $quote) {
             $quote = (string) $quote;
@@ -462,7 +448,7 @@ final class StructuralCommaSplitter
                     continue;
                 }
 
-                $symmetricEnds[$quote][] = $closerStart;
+                $symmetricEnds[$quote] = $closerStart;
             }
         }
 

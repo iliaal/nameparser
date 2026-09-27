@@ -144,8 +144,7 @@ class SuffixMapper extends AbstractMapper
         $candidateIndexes = [];
         $mappedSuffix = false;
         $crossedBridge = false;
-        // Precompute opener presence so each suffix-span check stays O(1).
-        $spanOpenerPrefix = $this->buildSpanOpenerPrefix($parts);
+        $spanOpenerPrefix = null;
         for ($k = count($parts) - 1; $k >= 0; $k--) {
             if (isset($leadingSet[$k])) {
                 continue;
@@ -168,6 +167,10 @@ class SuffixMapper extends AbstractMapper
                 }
 
                 if ($this->isTailNoise($part)) {
+                    if ($this->isSpanTailToken($parts, $k, $spanOpenerPrefix ??= $this->buildSpanOpenerPrefix($parts))) {
+                        break;
+                    }
+
                     $noiseIndexes[$k] = true;
 
                     continue;
@@ -192,7 +195,7 @@ class SuffixMapper extends AbstractMapper
             }
 
             // Preserve nickname closers such as "(Bob Jr)"; an unpaired "MD)" can still be a suffix.
-            if ($this->isSpanTailToken($parts, $k, $spanOpenerPrefix)) {
+            if ($this->isSpanTailToken($parts, $k, $spanOpenerPrefix ??= $this->buildSpanOpenerPrefix($parts))) {
                 break;
             }
 
@@ -485,6 +488,7 @@ class SuffixMapper extends AbstractMapper
             $open = (string) $open;
             $symmetric = $open === $close;
             $seen = false;
+            $depth = 0;
             $column = [];
 
             foreach ($parts as $index => $part) {
@@ -496,6 +500,9 @@ class SuffixMapper extends AbstractMapper
 
                 if ($symmetric) {
                     $delta = self::symmetricBoundaryDelta($part, $open);
+                    if ($seen && self::isStandaloneSymmetricDelimiter($part, $open)) {
+                        $delta = -1;
+                    }
                     if ($delta === 0
                         && self::isStandaloneSymmetricDelimiter($part, $open)
                         && self::hasLaterSymmetricCloser($parts, $index, $open)) {
@@ -506,8 +513,9 @@ class SuffixMapper extends AbstractMapper
                     } elseif ($delta < 0) {
                         $seen = false;
                     }
-                } elseif (substr_count($part, $open) > substr_count($part, $close)) {
-                    $seen = true;
+                } else {
+                    $depth = max(0, $depth + substr_count($part, $open) - substr_count($part, $close));
+                    $seen = $depth > 0;
                 }
             }
 
@@ -541,7 +549,8 @@ class SuffixMapper extends AbstractMapper
             $symmetric = $open === $close;
 
             if ($symmetric) {
-                if (self::symmetricBoundaryDelta($part, $open) >= 0) {
+                if (self::symmetricBoundaryDelta($part, $open) >= 0
+                    && ! self::isStandaloneSymmetricDelimiter($part, $open)) {
                     $pair++;
 
                     continue;

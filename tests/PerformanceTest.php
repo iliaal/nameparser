@@ -2,6 +2,7 @@
 
 namespace Tests\Iliaal\NameParser;
 
+use Iliaal\NameParser\Confidence;
 use Iliaal\NameParser\Parser;
 use Iliaal\NameParser\Part\Lastname;
 use PHPUnit\Framework\TestCase;
@@ -66,6 +67,39 @@ class PerformanceTest extends TestCase
 
         $this->assertLessThan(0.2, $elapsed);
     }
+
+    public function testConfidenceQuoteCloserLookupRemainsLinear(): void
+    {
+        $expected = Confidence::assess('Lord Ashcroft');
+        $measure = fn(int $size): float => $this->medianCpuSeconds(
+            static function () use ($size, $expected): void {
+                $input = 'Lord Ashcroft ' . str_repeat("' a' ", $size) . ',';
+                self::assertSame($expected, Confidence::assess($input));
+            },
+            1,
+        );
+
+        $measure(8000);
+        $measure(16000);
+        $smallSamples = [];
+        $largeSamples = [];
+        for ($sample = 0; $sample < self::SCALING_SAMPLES; ++$sample) {
+            if ($sample % 2 === 0) {
+                $smallSamples[] = $measure(8000);
+                $largeSamples[] = $measure(16000);
+            } else {
+                $largeSamples[] = $measure(16000);
+                $smallSamples[] = $measure(8000);
+            }
+        }
+
+        $small = $this->median($smallSamples);
+        $large = $this->median($largeSamples);
+
+        $this->assertLessThan(self::MAX_SECONDS, $large);
+        $this->assertLessThan(($small * self::MAX_SCALING_RATIO) + 0.005, $large);
+    }
+
     public function testCommaHeavyInputUsesBoundedWorkingMemory(): void
     {
         $input = 'Smith,' . str_repeat(',', 500000);
