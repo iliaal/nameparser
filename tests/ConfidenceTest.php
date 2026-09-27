@@ -3,6 +3,7 @@
 namespace Tests\Iliaal\NameParser;
 
 use Iliaal\NameParser\Confidence;
+use Iliaal\NameParser\Parser;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -187,6 +188,144 @@ class ConfidenceTest extends TestCase
         $this->expectException(\LengthException::class);
 
         Confidence::assess(str_repeat('A ', self::MAX_INPUT_TOKENS) . "\xFF");
+    }
+
+    public function testInvalidUtf8WhitespaceUsesBytewiseTokenizationWithoutWarnings(): void
+    {
+        $result = Confidence::assess('Lord Ashcroft', whitespace: "\xFF");
+
+        $this->assertTrue($result['ambiguous']);
+        $this->assertSame(
+            ["'Lord' could be a name or a salutation; nothing in the input decides it"],
+            $result['notes'],
+        );
+    }
+
+    public function testNulWhitespaceIsStrippedBeforeConfidenceTokenization(): void
+    {
+        $this->assertSame(
+            ['ambiguous' => false, 'notes' => []],
+            Confidence::assess("Lord\x00Ashcroft", whitespace: "\x00"),
+        );
+    }
+
+    public function testNulStrippingAppliesAtTheTokenLimit(): void
+    {
+        $input = str_repeat("A\x00", self::MAX_INPUT_TOKENS) . 'A';
+
+        $this->assertSame(
+            ['ambiguous' => false, 'notes' => []],
+            Confidence::assess($input, whitespace: "\x00"),
+        );
+    }
+
+    public function testEmptyWhitespacePreservesTabsBeforeConfidenceTokenization(): void
+    {
+        $this->assertSame(
+            ['ambiguous' => false, 'notes' => []],
+            Confidence::assess("D\tO smith", whitespace: ''),
+        );
+    }
+
+    public function testManyConfiguredDelimitersStayWithinMemoryBudget(): void
+    {
+        $input = 'X ' . str_repeat('a', (1024 * 1024) - 10) . ', Y';
+        /** @var array<string, string> $delimiters */
+        $delimiters = [];
+        /** @var list<string> $delimiterCharacters */
+        $delimiterCharacters = ['"', "'", 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1', '2', '3', '4'];
+        foreach ($delimiterCharacters as $delimiter) {
+            $delimiters[$delimiter] = $delimiter;
+        }
+
+        $this->assertFalse(Confidence::assess($input, nicknameDelimiters: $delimiters)['ambiguous']);
+    }
+
+    public function testLargeCommaOnlyInputWithIgnoredDelimiterDoesNotMaterializeSegments(): void
+    {
+        $input = str_repeat(',', 1024 * 1024);
+        $delimiter = str_repeat('x', 65);
+
+        $this->assertFalse(Confidence::assess(
+            $input,
+            nicknameDelimiters: [$delimiter => $delimiter],
+        )['ambiguous']);
+    }
+
+    public function testLargeSpaceSeparatedInputStopsAtTokenLimit(): void
+    {
+        $this->expectException(\LengthException::class);
+
+        Confidence::assess(str_repeat('A ', 1024 * 512));
+    }
+
+    public function testSuppliedTokensStillValidateLargeOriginalTokenBudget(): void
+    {
+        $this->expectException(\LengthException::class);
+
+        Confidence::assess(
+            str_repeat('A ', 1024 * 512),
+            tokens: ['A'],
+        );
+    }
+
+    public function testSelfBalancedQuoteCloserCannotBypassTokenBudget(): void
+    {
+        $this->expectException(\LengthException::class);
+
+        Confidence::assess("Lord ' " . str_repeat('A,', 65536) . "'Genius' Ashcroft");
+    }
+
+    public function testExplicitEmptyDelimiterArrayRestoresDefaultNicknameParity(): void
+    {
+        $input = "Lord 'Bob, Jr' Ashcroft";
+        $parser = (new Parser())->setNicknameDelimiters([]);
+
+        $this->assertSame(
+            $parser->parse($input)->getConfidence(),
+            Confidence::assess($input, nicknameDelimiters: []),
+        );
+    }
+
+    public function testInvalidUtf8InputCannotBypassTheTokenLimit(): void
+    {
+        $this->expectException(\LengthException::class);
+
+        Confidence::assess(
+            "Lord '" . str_repeat('A,', 70000) . "' \xFE",
+            whitespace: "\xFF",
+        );
+    }
+
+    public function testLeadingSymmetricQuoteBoundaryMatchesParserConfidence(): void
+    {
+        $input = "'Bob, Jr' Ashcroft";
+        $parser = new Parser();
+
+        $this->assertSame(
+            $parser->parse($input)->getConfidence(),
+            Confidence::assess($input),
+        );
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function shieldedCommaLimitProvider(): array
+    {
+        return [
+            '65533 commas' => ['Lord (' . str_repeat(',', 65533) . str_repeat('X', 30) . ') Ashcroft'],
+            '65534 commas' => ['Lord (' . str_repeat(',', 65534) . str_repeat('X', 30) . ') Ashcroft'],
+        ];
+    }
+
+    #[DataProvider('shieldedCommaLimitProvider')]
+    public function testShieldedCommasDoNotCountAsConfidenceTokens(string $input): void
+    {
+        $this->assertSame(
+            ["'Lord' could be a name or a salutation; nothing in the input decides it"],
+            Confidence::assess($input)['notes'],
+        );
     }
 
     public function testSuppliedTokensDoNotBypassByteBudget(): void

@@ -43,6 +43,7 @@ class CommaSegmentTest extends TestCase
             'all-caps multi-token given before credential' => ['Smith, JOHN PAUL, MD', 'John', 'Paul', 'Smith', 'MD'],
             'pure unknown before dictionary stays name' => ['Smith, FACS, MD', 'Facs', '', 'Smith', 'MD'],
             'mixed segment trailing candidate rides on later dictionary' => ['Smith, John FACS, MD', 'John', '', 'Smith', 'FACS MD'],
+            'Roman head preserves trailing candidate anchor' => ['Smith, Michelle, I FACS, MD', 'Michelle', '', 'Smith', 'FACS MD'],
             'mixed same-segment dict then unknown' => ['Garcia, Maria MD FACS', 'Maria', '', 'Garcia', 'MD FACS'],
             'mixed same-segment multi-token then unknown' => ['Smith, John MD FACS', 'John', '', 'Smith', 'MD FACS'],
             'mixed then pure unknown segment rides' => ['Smith, John MD, FACS', 'John', '', 'Smith', 'MD FACS'],

@@ -144,8 +144,7 @@ class SuffixMapper extends AbstractMapper
         $candidateIndexes = [];
         $mappedSuffix = false;
         $crossedBridge = false;
-        // Precompute opener presence so each suffix-span check stays O(1).
-        $spanOpenerPrefix = $this->buildSpanOpenerPrefix($parts);
+        $spanOpenerPrefix = null;
         for ($k = count($parts) - 1; $k >= 0; $k--) {
             if (isset($leadingSet[$k])) {
                 continue;
@@ -168,6 +167,10 @@ class SuffixMapper extends AbstractMapper
                 }
 
                 if ($this->isTailNoise($part)) {
+                    if ($this->isSpanTailToken($parts, $k, $spanOpenerPrefix ??= $this->buildSpanOpenerPrefix($parts))) {
+                        break;
+                    }
+
                     $noiseIndexes[$k] = true;
 
                     continue;
@@ -192,7 +195,7 @@ class SuffixMapper extends AbstractMapper
             }
 
             // Preserve nickname closers such as "(Bob Jr)"; an unpaired "MD)" can still be a suffix.
-            if ($this->isSpanTailToken($parts, $k, $spanOpenerPrefix)) {
+            if ($this->isSpanTailToken($parts, $k, $spanOpenerPrefix ??= $this->buildSpanOpenerPrefix($parts))) {
                 break;
             }
 
@@ -485,19 +488,34 @@ class SuffixMapper extends AbstractMapper
             $open = (string) $open;
             $symmetric = $open === $close;
             $seen = false;
+            $depth = 0;
             $column = [];
 
-            foreach ($parts as $part) {
+            foreach ($parts as $index => $part) {
                 $column[] = $seen;
 
                 if (! is_string($part)) {
                     continue;
                 }
 
-                if ($symmetric
-                    ? substr_count($part, $open) % 2 === 1
-                    : substr_count($part, $open) > substr_count($part, $close)) {
-                    $seen = true;
+                if ($symmetric) {
+                    $delta = self::symmetricBoundaryDelta($part, $open);
+                    if ($seen && self::isStandaloneSymmetricDelimiter($part, $open)) {
+                        $delta = -1;
+                    }
+                    if ($delta === 0
+                        && self::isStandaloneSymmetricDelimiter($part, $open)
+                        && self::hasLaterSymmetricCloser($parts, $index, $open)) {
+                        $delta = 1;
+                    }
+                    if ($delta > 0) {
+                        $seen = true;
+                    } elseif ($delta < 0) {
+                        $seen = false;
+                    }
+                } else {
+                    $depth = max(0, $depth + substr_count($part, $open) - substr_count($part, $close));
+                    $seen = $depth > 0;
                 }
             }
 
@@ -531,7 +549,8 @@ class SuffixMapper extends AbstractMapper
             $symmetric = $open === $close;
 
             if ($symmetric) {
-                if (substr_count($part, $open) % 2 !== 1) {
+                if (self::symmetricBoundaryDelta($part, $open) >= 0
+                    && ! self::isStandaloneSymmetricDelimiter($part, $open)) {
                     $pair++;
 
                     continue;
@@ -547,6 +566,67 @@ class SuffixMapper extends AbstractMapper
             }
 
             $pair++;
+        }
+
+        return false;
+    }
+
+    /**
+     * Symmetric delimiters open only at a token start and close only at a token
+     * end. Internal apostrophes therefore have no delimiter state effect.
+     */
+    private static function symmetricBoundaryDelta(string $part, string $delimiter): int
+    {
+        $delimiterLength = strlen($delimiter);
+        if ($delimiterLength === 0) {
+            return 0;
+        }
+        $partLength = strlen($part);
+        $leading = 0;
+        while ($leading * $delimiterLength < $partLength
+            && substr($part, $leading * $delimiterLength, $delimiterLength) === $delimiter) {
+            $leading++;
+        }
+        if ($leading > 1 && $leading * $delimiterLength === $partLength) {
+            return $leading % 2 === 1 ? 1 : 0;
+        }
+
+        $trailing = 0;
+        $trailingLimit = max(0, $partLength - ($leading * $delimiterLength));
+        while ($trailing * $delimiterLength < $trailingLimit
+            && substr(
+                $part,
+                $partLength - ($trailing + 1) * $delimiterLength,
+                $delimiterLength,
+            ) === $delimiter) {
+            $trailing++;
+        }
+
+        return $leading - $trailing;
+    }
+
+    private static function isStandaloneSymmetricDelimiter(string $part, string $delimiter): bool
+    {
+        return $part === $delimiter;
+    }
+
+    /**
+     * @param  PartArray  $parts
+     */
+    private static function hasLaterSymmetricCloser(array $parts, int $openIndex, string $delimiter): bool
+    {
+        $delimiterLength = strlen($delimiter);
+        for ($index = $openIndex + 1, $count = count($parts); $index < $count; $index++) {
+            $part = $parts[$index];
+            if (! is_string($part) || ! str_ends_with($part, $delimiter)) {
+                continue;
+            }
+
+            if (str_starts_with($part, $delimiter) && strlen($part) >= $delimiterLength * 2) {
+                continue;
+            }
+
+            return true;
         }
 
         return false;

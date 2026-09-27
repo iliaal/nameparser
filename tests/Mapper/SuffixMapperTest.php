@@ -7,6 +7,7 @@ use Iliaal\NameParser\Mapper\SuffixMapper;
 use Iliaal\NameParser\Part\Firstname;
 use Iliaal\NameParser\Part\Lastname;
 use Iliaal\NameParser\Part\Suffix;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 class SuffixMapperTest extends AbstractMapperTestCase
 {
@@ -193,5 +194,79 @@ class SuffixMapperTest extends AbstractMapperTestCase
         $this->assertCount(1, $mapped);
         $this->assertInstanceOf(Suffix::class, $mapped[0]);
         $this->assertSame('LAc', $mapped[0]->getValue());
+    }
+
+    /**
+     * @return array<string, array{array<string, string>}>
+     */
+    public static function symmetricDelimiterProvider(): array
+    {
+        return [
+            'default parentheses' => [['(' => ')']],
+            'custom symmetric delimiter' => [['%%' => '%%']],
+        ];
+    }
+
+    /**
+     * @param  array<string, string>  $delimiters
+     */
+    #[DataProvider('symmetricDelimiterProvider')]
+    public function testInternalApostropheDoesNotOpenSymmetricNicknameSpan(array $delimiters): void
+    {
+        $mapper = new SuffixMapper((new English())->getSuffixes(), false, 2, $delimiters);
+
+        $mapped = $mapper->map(['John', "D'Angelo", "MD'"]);
+
+        $this->assertSame('John', $mapped[0]);
+        $this->assertSame("D'Angelo", $mapped[1]);
+        $this->assertInstanceOf(Suffix::class, $mapped[2]);
+        $this->assertSame("MD'", $mapped[2]->getValue());
+    }
+
+    public function testStandaloneSymmetricDelimiterDoesNotHideLaterNicknameTail(): void
+    {
+        $mapper = new SuffixMapper(
+            (new English())->getSuffixes(),
+            false,
+            2,
+            ["'" => "'"],
+        );
+
+        $this->assertSame(
+            ['John', "'", "MD'"],
+            $mapper->map(['John', "'", "MD'"]),
+        );
+    }
+
+    public function testBalancedStandaloneDelimiterRunDoesNotOpenNicknameSpan(): void
+    {
+        $mapper = new SuffixMapper(
+            (new English())->getSuffixes(),
+            false,
+            2,
+            ["'" => "'"],
+        );
+
+        $mapped = $mapper->map(['John', "''", "MD'"]);
+
+        $this->assertSame('John', $mapped[0]);
+        $this->assertSame("''", $mapped[1]);
+        $this->assertInstanceOf(Suffix::class, $mapped[2]);
+        $this->assertSame("MD'", $mapped[2]->getValue());
+    }
+
+    public function testOverlappingSymmetricDelimiterRunsDoNotConsumeNicknameTail(): void
+    {
+        $mapper = new SuffixMapper(
+            (new English())->getSuffixes(),
+            false,
+            2,
+            ['"' => '"'],
+        );
+
+        $this->assertSame(
+            ['John', '"""', 'MD""'],
+            $mapper->map(['John', '"""', 'MD""']),
+        );
     }
 }

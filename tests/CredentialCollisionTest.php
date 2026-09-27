@@ -98,6 +98,8 @@ class CredentialCollisionTest extends TestCase
             'comma punctuated known credential'   => ['George Nasser, M.D.', 'George', 'Nasser', 'MD'],
 
             'uniform caps comma tail'             => ['NEMEC, CHRISTINA', 'Christina', 'Nemec', ''],
+            'internal apostrophe before suffix punctuation' => ["John D'Angelo MD'", 'John', "D'Angelo", 'MD'],
+            'comma form with internal apostrophe' => ["D'Angelo, John MD'", 'John', "D'Angelo", 'MD'],
         ];
     }
 
@@ -366,6 +368,10 @@ class CredentialCollisionTest extends TestCase
             'registry MI form I'     => ['Lapin, Michelle I', 'Michelle', 'I', ''],
             'registry MI form V'     => ['Nguyen, Dong V, DPM', 'Dong', 'V', 'DPM'],
             'control initial B'      => ['Lapin, Michelle B', 'Michelle', 'B', ''],
+            'isolated I after given' => ['Smith, Michelle, I', 'Michelle', 'I', ''],
+            'isolated V after given' => ['Smith, Michelle, V', 'Michelle', 'V', ''],
+            'isolated X after given' => ['Smith, Michelle, X', 'Michelle', 'X', ''],
+            'isolated lowercase i after given' => ['Smith, Michelle, i', 'Michelle', 'I', ''],
         ];
     }
 
@@ -401,5 +407,82 @@ class CredentialCollisionTest extends TestCase
         $this->assertSame('Ma', $name->getLastname());
         $this->assertSame('Bob', $name->getNickname());
         $this->assertSame('', $name->getSuffix());
+    }
+
+    /**
+     * @return array<string, array{string, string, string}>
+     */
+    public static function standaloneNicknameCloserProvider(): array
+    {
+        return [
+            'leading quote on credential' => ["John Smith 'Bob ' 'MD", 'Bob', 'MD'],
+            'bare credential' => ["John Smith 'Bob ' MD", 'Bob', 'MD'],
+            'trailing quote on credential' => ["John Smith 'Bob ' MD'", 'Bob', 'MD'],
+            'double quotes' => ['John Smith "Bob " "MD', 'Bob', 'MD'],
+            'parentheses' => ['John Smith (Bob ) MD', 'Bob', 'MD'],
+            'credential inside nickname' => ["John Smith 'Bob MD ' 'PhD", 'Bob Md', 'PhD'],
+            'comma form' => ["Smith, John 'Bob ' 'MD", 'Bob', 'MD'],
+        ];
+    }
+
+    #[DataProvider('standaloneNicknameCloserProvider')]
+    public function testStandaloneNicknameCloserBeforeCredentialIsPreserved(
+        string $input,
+        string $nickname,
+        string $suffix,
+    ): void {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('', $name->getMiddlename());
+        $this->assertSame('', $name->getInitials());
+        $this->assertSame($nickname, $name->getNickname());
+        $this->assertSame($suffix, $name->getSuffix());
+    }
+
+    public function testCustomStandaloneNicknameCloserBeforeCredentialIsPreserved(): void
+    {
+        $parser = (new Parser())->setNicknameDelimiters(['%%' => '%%']);
+        $name = $parser->parse('John Smith %%Bob %% MD');
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('', $name->getMiddlename());
+        $this->assertSame('', $name->getInitials());
+        $this->assertSame('Bob', $name->getNickname());
+        $this->assertSame('MD', $name->getSuffix());
+    }
+
+    /**
+     * @return array<string, array{string, array<string, string>, string}>
+     */
+    public static function strayNicknameCloserProvider(): array
+    {
+        return [
+            'closed span' => ['John (Bob Jones) Smith PhD ) MD', ['(' => ')'], 'Bob Jones'],
+            'punctuated closer' => ['John (Bob Jones) Smith PhD ); MD', ['(' => ')'], 'Bob Jones'],
+            'nested span' => ['John (Bob (Joe) Jones) Smith PhD ) MD', ['(' => ')'], 'Bob (Joe) Jones'],
+            'custom delimiters' => ['John <<Bob Jones>> Smith PhD >> MD', ['<<' => '>>'], 'Bob Jones'],
+        ];
+    }
+
+    /**
+     * @param  array<string, string>  $delimiters
+     */
+    #[DataProvider('strayNicknameCloserProvider')]
+    public function testStrayCloserAfterClosedNicknameDoesNotInterruptCredentials(
+        string $input,
+        array $delimiters,
+        string $nickname,
+    ): void {
+        $name = (new Parser())->setNicknameDelimiters($delimiters)->parse($input);
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('', $name->getMiddlename());
+        $this->assertSame('', $name->getInitials());
+        $this->assertSame($nickname, $name->getNickname());
+        $this->assertSame('PhD MD', $name->getSuffix());
     }
 }

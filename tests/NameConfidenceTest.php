@@ -76,6 +76,48 @@ class NameConfidenceTest extends TestCase
         $this->assertFalse($name->getConfidence()['ambiguous']);
     }
 
+    public function testParsedAndStandaloneConfidencePreserveEmptyWhitespaceTabs(): void
+    {
+        $input = "D\tO smith";
+        $name = (new Parser())->setWhitespace('')->parse($input);
+
+        $this->assertSame("D\tO", $name->getFirstname());
+        $this->assertSame(
+            Confidence::assess($input, whitespace: ''),
+            $name->getConfidence(),
+        );
+    }
+
+    public function testParsedConfidenceKeepsNulCompatibleWithParserTokenization(): void
+    {
+        $name = (new Parser())
+            ->setWhitespace("\x00")
+            ->parse("Lord\x00Ashcroft");
+
+        $this->assertSame('LordAshcroft', $name->getSource());
+        $this->assertFalse($name->getConfidence()['ambiguous']);
+    }
+
+    public function testParsedConfidenceHandlesInvalidUtf8WhitespaceWithoutWarnings(): void
+    {
+        $name = (new Parser())
+            ->setWhitespace("\xFF")
+            ->parse('Lord Ashcroft');
+
+        $this->assertTrue($name->getConfidence()['ambiguous']);
+    }
+
+    public function testParsedConfidenceIgnoresShieldedCommasAtTheTokenLimit(): void
+    {
+        $input = 'Lord (' . str_repeat(',', 65534) . str_repeat('X', 30) . ') Ashcroft';
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame(
+            ["'Lord' could be a name or a salutation; nothing in the input decides it"],
+            $name->getConfidence()['notes'],
+        );
+    }
+
     public function testParsedConfidenceUsesConfiguredSalutations(): void
     {
         $name = (new Parser([new German()]))->parse('Lord Ashcroft');
