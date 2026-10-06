@@ -34,6 +34,7 @@
             "@check:phpstan-baseline",
             "phpstan analyse"
         ],
+        "check:phpstan-baseline": "php -r '$actual = preg_replace(\"/\\\\s+/\", \"\", file_get_contents(\"phpstan-baseline.neon\")); if ($actual !== \"parameters:ignoreErrors:[]\") { fwrite(STDERR, \"phpstan-baseline.neon must remain empty\\n\"); exit(1); }'",
         "check:php85": [
             "@check:php85-deprecations",
             "phpstan analyse -c phpstan-85.neon"
