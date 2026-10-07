@@ -246,26 +246,18 @@ class Name
      */
     public function getAll(bool $format = false): array
     {
-        $getters = [
-            'salutation' => $this->getSalutation(...),
-            'firstname' => $this->getFirstname(...),
-            'nickname' => fn(): string => $this->getNickname($format),
-            'middlename' => $this->getMiddlename(...),
-            'initials' => $this->getInitials(...),
-            'lastname' => $this->getLastname(...),
-            'suffix' => $this->getSuffix(...),
-        ];
-
-        $results = [];
-
-        foreach ($getters as $key => $getter) {
-            $value = $getter();
-            if ($value !== '') {
-                $results[$key] = $value;
-            }
-        }
-
-        return $results;
+        return array_filter(
+            [
+                'salutation' => $this->getSalutation(),
+                'firstname' => $this->getFirstname(),
+                'nickname' => $this->getNickname($format),
+                'middlename' => $this->getMiddlename(),
+                'initials' => $this->getInitials(),
+                'lastname' => $this->getLastname(),
+                'suffix' => $this->getSuffix(),
+            ],
+            static fn(string $value): bool => $value !== '',
+        );
     }
 
     /**
