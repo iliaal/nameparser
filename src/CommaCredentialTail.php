@@ -75,7 +75,7 @@ final class CommaCredentialTail
                 continue;
             }
 
-            [$tokenClasses, $hasDictionarySuffix] = $this->classifyTokens($tokens, $uniformInput);
+            $tokenClasses = $this->classifyTokens($tokens, $uniformInput);
             $preserveSingleLetterInitial = self::containsSingleLetterRoman($tokenClasses)
                 && $hasPreservedName;
             $effectiveTokenClasses = $preserveSingleLetterInitial
@@ -248,23 +248,16 @@ final class CommaCredentialTail
 
     /**
      * @param  list<string>  $tokens
-     * @return array{0: list<array{0: string, 1: TokenCredentialClass}>, 1: bool}
+     * @return list<array{0: string, 1: TokenCredentialClass}>
      */
     private function classifyTokens(array $tokens, bool $uniformInput): array
     {
         $tokenClasses = [];
-        $hasDictionarySuffix = false;
         foreach ($tokens as $token) {
-            $class = $this->credentialClass($token, $uniformInput);
-
-            if ($class === TokenCredentialClass::DictionaryCredential) {
-                $hasDictionarySuffix = true;
-            }
-
-            $tokenClasses[] = [$token, $class];
+            $tokenClasses[] = [$token, $this->credentialClass($token, $uniformInput)];
         }
 
-        return [$tokenClasses, $hasDictionarySuffix];
+        return $tokenClasses;
     }
 
     private function credentialClass(string $token, bool $uniformInput): TokenCredentialClass
