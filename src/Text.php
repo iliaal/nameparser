@@ -357,10 +357,12 @@ final class Text
             return false;
         }
 
-        if (! self::isUpperCase($token)) {
+        $analysis = self::analyzeToken($token);
+
+        if (! $analysis['upper']) {
             return false;
         }
 
-        return self::graphemeLengthUpTo(self::letters($token), 2) >= 2;
+        return self::graphemeLengthUpTo($analysis['letters'], 2) >= 2;
     }
 }
