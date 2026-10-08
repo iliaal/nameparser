@@ -36,6 +36,38 @@ class NameTest extends TestCase
         $this->assertSame('Mr. James (Jim) Morgan T. Smith I', (string) $name);
     }
 
+    public function testGetAllPreservesGetterOverridesAndFormatting(): void
+    {
+        $name = new class extends Name {
+            #[\Override]
+            public function getFirstname(): string
+            {
+                return 'Custom';
+            }
+
+            #[\Override]
+            public function getNickname(bool $wrap = false): string
+            {
+                return $wrap ? '(Nickname)' : 'Nickname';
+            }
+
+            #[\Override]
+            public function getLastname(bool $pure = false): string
+            {
+                return 'Surname';
+            }
+        };
+
+        $this->assertSame(
+            ['firstname' => 'Custom', 'nickname' => 'Nickname', 'lastname' => 'Surname'],
+            $name->getAll(),
+        );
+        $this->assertSame(
+            ['firstname' => 'Custom', 'nickname' => '(Nickname)', 'lastname' => 'Surname'],
+            $name->getAll(true),
+        );
+    }
+
     public function testGetNickname(): void
     {
         $name = new Name([
