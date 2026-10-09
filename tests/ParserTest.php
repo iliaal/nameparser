@@ -815,6 +815,26 @@ class ParserTest extends TestCase
         $this->assertSame('MD', $name->getSuffix());
     }
 
+    public function testSplitHookCanRewriteSharedGivenString(): void
+    {
+        $parser = new class extends Parser {
+            #[\Override]
+            protected function parseSplitName(string $surname, string $given): Name
+            {
+                $given[1] = 'K';
+
+                return parent::parseSplitName($surname, $given);
+            }
+        };
+
+        $name = $parser->parse('Smith, Jane, MD');
+
+        $this->assertSame('Kane', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('MD', $name->getSuffix());
+        $this->assertSame('Smith, Jane, MD', $name->getSource());
+    }
+
     public function testSubclassMayOverrideSettersWithConcreteReturnType(): void
     {
         // The released 1.x API permits concrete Parser returns in subclass setters.
