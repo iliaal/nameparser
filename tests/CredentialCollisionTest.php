@@ -371,6 +371,11 @@ class CredentialCollisionTest extends TestCase
             'isolated I after given' => ['Smith, Michelle, I', 'Michelle', 'I', ''],
             'isolated V after given' => ['Smith, Michelle, V', 'Michelle', 'V', ''],
             'isolated X after given' => ['Smith, Michelle, X', 'Michelle', 'X', ''],
+            'initial before same-segment credential' => ['Smith, Michelle, I MD', 'Michelle', 'I', 'MD'],
+            'initial after same-segment credential' => ['Smith, Michelle, MD I', 'Michelle', 'I', 'MD'],
+            'initial before later credential' => ['Smith, Michelle, I, MD', 'Michelle', 'I', 'MD'],
+            'initial after earlier credential' => ['Smith, Michelle, MD, I', 'Michelle', 'I', 'MD'],
+            'initial alone does not anchor candidate' => ['Smith, Michelle, I, FACS', 'Michelle', 'I', ''],
             'isolated lowercase i after given' => ['Smith, Michelle, i', 'Michelle', 'I', ''],
         ];
     }
