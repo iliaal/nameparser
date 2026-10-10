@@ -300,6 +300,64 @@ class NicknameMapperTest extends AbstractMapperTestCase
         );
     }
 
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function symmetricDelimiterProvider(): iterable
+    {
+        yield 'ASCII quote' => ['"'];
+        yield 'multi-character ASCII' => ['||'];
+        yield 'multibyte' => ['§'];
+        yield 'multi-character Unicode' => ['§界'];
+        yield 'combining mark' => ["e\u{0301}"];
+    }
+
+    #[DataProvider('symmetricDelimiterProvider')]
+    public function testSymmetricClosersPreserveTokenBoundaries(string $delimiter): void
+    {
+        $mapper = new NicknameMapper([$delimiter => $delimiter]);
+
+        $this->assertSame(
+            self::canonicalParts(['John', new Nickname('Bób'), new Nickname('李'), 'Smith']),
+            self::canonicalParts($mapper->map(['John', $delimiter . 'Bób', '李' . $delimiter, 'Smith'])),
+        );
+        $this->assertSame(
+            self::canonicalParts(['John', new Nickname('Bób'), 'Smith']),
+            self::canonicalParts($mapper->map(['John', $delimiter . 'Bób' . $delimiter, 'Smith'])),
+        );
+        $this->assertSame(
+            ['John', $delimiter . 'Bób', '李' . $delimiter . ';', 'Smith'],
+            $mapper->map(['John', $delimiter . 'Bób', '李' . $delimiter . ';', 'Smith']),
+        );
+        $this->assertSame(
+            self::canonicalParts(['John', $delimiter . 'orphan', new Nickname('Bób'), 'Smith']),
+            self::canonicalParts($mapper->map(['John', $delimiter . 'orphan', $delimiter . 'Bób' . $delimiter, 'Smith'])),
+        );
+    }
+
+    public function testMalformedUtf8PreservesMbstringSubstitutionForClosers(): void
+    {
+        $substitute = mb_substitute_character();
+        mb_substitute_character(63);
+
+        try {
+            $mapper = new NicknameMapper(['?' => '?']);
+            $this->assertSame(
+                ['John', 'Bob', "Bad\xFF", 'Smith'],
+                $mapper->map(['John', '?Bob', "Bad\xFF", 'Smith']),
+            );
+
+            mb_substitute_character(39);
+            $mapper = new NicknameMapper();
+            $this->assertSame(
+                ['John', 'Bob', "Bad\xFF", 'Smith'],
+                $mapper->map(['John', "'Bob", "Bad\xFF", 'Smith']),
+            );
+        } finally {
+            mb_substitute_character($substitute);
+        }
+    }
+
     protected function getMapper(): NicknameMapper
     {
         return new NicknameMapper([

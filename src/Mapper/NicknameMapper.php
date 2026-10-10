@@ -279,7 +279,7 @@ class NicknameMapper extends AbstractMapper
     {
         $closerLength = mb_strlen($closer, 'UTF-8');
 
-        if ($stripped !== '' && mb_substr($stripped, -$closerLength, null, 'UTF-8') === $closer) {
+        if ($stripped !== '' && self::endsWithCloser($stripped, $closer, $closerLength)) {
             return true;
         }
 
@@ -287,7 +287,7 @@ class NicknameMapper extends AbstractMapper
             $last = null;
             foreach ($parts as $k => $part) {
                 if (! is_string($part)
-                    || mb_substr($part, -$closerLength, null, 'UTF-8') !== $closer) {
+                    || ! self::endsWithCloser($part, $closer, $closerLength)) {
                     continue;
                 }
 
@@ -306,6 +306,15 @@ class NicknameMapper extends AbstractMapper
         $last = $this->lastCloserIndex[$closer];
 
         return $last !== null && $last > $openKey;
+    }
+
+    private static function endsWithCloser(string $part, string $closer, int $closerLength): bool
+    {
+        // Valid UTF-8 needs only a byte suffix check; retain mbstring substitution
+        // semantics for malformed strings passed directly to the mapper.
+        return mb_check_encoding($part, 'UTF-8')
+            ? str_ends_with($part, $closer)
+            : mb_substr($part, -$closerLength, null, 'UTF-8') === $closer;
     }
 
     protected function buildRegexp(): string
