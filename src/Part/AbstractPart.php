@@ -60,10 +60,13 @@ abstract class AbstractPart
         $this->camelcaseCacheWord = $word;
 
         $caseShape = preg_replace('/\p{M}/u', '', $word) ?? $word;
-        $isMixedCase = strlen($caseShape) <= 1024
-            && ! Text::isUpperCase($caseShape)
-            && ! Text::isLowerCase($caseShape)
-            && $this->hasInternalCaseTransition($caseShape);
+        $isMixedCase = false;
+        if (strlen($caseShape) <= 1024) {
+            $analysis = Text::analyzeToken($caseShape);
+            $isMixedCase = ! $analysis['upper']
+                && ! $analysis['lower']
+                && $this->hasInternalCaseTransition($caseShape);
+        }
 
         if ($isMixedCase) {
             return $this->camelcaseCache = $word;
