@@ -160,10 +160,11 @@ class Parser
         if (count($segments) > 1) {
             // Reuse the split while preserving subclass parseSplitName() overrides.
             $tail = array_slice($segments, 1);
-            $this->preSplitTailStack[] = [implode(',', $tail), $tail];
+            $given = implode(',', $tail);
+            $this->preSplitTailStack[] = [$given, $tail];
 
             try {
-                return $this->parseSplitName($segments[0], implode(',', $tail))
+                return $this->parseSplitName($segments[0], $given)
                     ->setSource($name, $this->tokenizeSegments($segments));
             } finally {
                 array_pop($this->preSplitTailStack);
