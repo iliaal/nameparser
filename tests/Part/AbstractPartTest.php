@@ -61,6 +61,12 @@ class AbstractPartTest extends TestCase
     {
         yield 'standard title case' => ['Macdonald', 'Macdonald'];
         yield 'lowercase' => ['macdonald', 'Macdonald'];
+        yield 'uppercase' => ['MACDONALD', 'Macdonald'];
+        yield 'uncased script' => ['山田', '山田'];
+        yield 'uncased prefix with internal transition' => ['山田aB', '山田aB'];
+        yield 'combining accent with internal transition' => ["McDo\u{0301}nald", "McDo\u{0301}nald"];
+        yield 'punctuation only' => ['---', '---'];
+        yield 'empty' => ['', ''];
         yield 'two-letter initial transition' => ['mA', 'Ma'];
         yield 'lower-upper-lower' => ['iPhone', 'iPhone'];
         yield 'upper-lower-upper' => ['McDonald', 'McDonald'];
