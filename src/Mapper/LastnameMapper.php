@@ -238,7 +238,7 @@ class LastnameMapper extends AbstractMapper
 
     /**
      * Prefer a firstname over a lone prefix unless surname-only context or an
-     * adjacent prefix resolves the ambiguity. Indexes use the original order.
+     * adjacent prefix (ignoring nicknames) resolves the ambiguity.
      *
      * @param  PartArray  $parts
      */
@@ -250,8 +250,9 @@ class LastnameMapper extends AbstractMapper
             return false;
         }
 
-        // Adjacent particles establish a surname even without a firstname.
-        if (($parts[$index + 1] ?? null) instanceof LastnamePrefix) {
+        // Nicknames do not interrupt the adjacent particles establishing a surname.
+        $next = $this->skipNicknameParts($parts, $index + 1);
+        if (($parts[$next] ?? null) instanceof LastnamePrefix) {
             return true;
         }
 

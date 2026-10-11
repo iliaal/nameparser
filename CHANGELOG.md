@@ -8,9 +8,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Nicknames between surname particles no longer invent a given name:
+  `van (Bob) der Berg` keeps the complete surname `van der Berg`.
 - Combined initials no longer split digits, punctuation, or caseless characters
   out of a token, so `Smith, A1 John` keeps `A1` as the first name.
-
 - Keep confidence tokenization, delimiter handling, and comma credential tails
   linear and bounded for hostile input while preserving parser/config parity.
 
