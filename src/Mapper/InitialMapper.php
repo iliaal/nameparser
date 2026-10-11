@@ -100,6 +100,18 @@ class InitialMapper extends AbstractMapper
                     && $length <= $this->combinedMax
                     && $stripped !== mb_strtolower($stripped, 'UTF-8')
                 ) {
+                    $initials = Text::graphemes($stripped);
+
+                    // A case signal alone does not make digits, punctuation, or
+                    // caseless characters initials. Keep mixed tokens intact.
+                    foreach ($initials as $initial) {
+                        if (! $this->isInitial($initial)) {
+                            $mapped[] = $part;
+
+                            continue 2;
+                        }
+                    }
+
                     $expandedParts += $length;
                     if ($expandedParts > self::MAX_COMBINED_EXPANSION_PARTS) {
                         throw new \LengthException(
@@ -109,8 +121,8 @@ class InitialMapper extends AbstractMapper
                         );
                     }
 
-                    foreach (Text::graphemes($stripped) as $initial) {
-                        $mapped[] = $this->isInitial($initial) ? new Initial($initial) : $initial;
+                    foreach ($initials as $initial) {
+                        $mapped[] = new Initial($initial);
                     }
 
                     continue;
