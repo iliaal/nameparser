@@ -176,6 +176,38 @@ class SurnameFirstTest extends TestCase
         $this->assertSame('Vincent', $name->getMiddlename());
     }
 
+    /**
+     * @return iterable<string, array{string, string, string, string, string, string}>
+     */
+    public static function documentedBoundaryRows(): iterable
+    {
+        // input, salutation, first, middle, last, suffix
+        yield 'explicit multi-token surname' => ['van Gogh, Vincent', '', 'Vincent', '', 'van Gogh', ''];
+        yield 'explicit surname with credential' => ['van Gogh, Vincent, MD', '', 'Vincent', '', 'van Gogh', 'MD'];
+        yield 'empty comma tail' => ['Kim Jong Un,', '', 'Jong', 'Un', 'Kim', ''];
+        yield 'comma alone does not establish surname boundary' => ['van Gogh Vincent,', '', 'Gogh', 'Vincent', 'Van', ''];
+        yield 'credential alone does not establish surname boundary' => ['van Gogh Vincent, MD', '', 'Gogh', 'Vincent', 'Van', 'MD'];
+        yield 'one token after salutation' => ['Dr. Kim', 'Dr.', '', '', 'Kim', ''];
+    }
+
+    #[DataProvider('documentedBoundaryRows')]
+    public function testDocumentedSurnameBoundaries(
+        string $input,
+        string $salutation,
+        string $first,
+        string $middle,
+        string $last,
+        string $suffix,
+    ): void {
+        $name = (new Parser())->setSurnameFirst(true)->parse($input);
+
+        $this->assertSame($salutation, $name->getSalutation());
+        $this->assertSame($first, $name->getFirstname());
+        $this->assertSame($middle, $name->getMiddlename());
+        $this->assertSame($last, $name->getLastname());
+        $this->assertSame($suffix, $name->getSuffix());
+    }
+
     public function testIsSurnameFirstGetterRoundTrips(): void
     {
         $parser = new Parser();

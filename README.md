@@ -274,8 +274,9 @@ Schmidt` parses as a joint name with `isJoint()` true. The English `and` and
 
 Fluent setters on `Parser`:
 
-- `setSurnameFirst(true)` reads comma-less space-separated names in CJK order
-  (`Mao Zedong` → last `Mao`). Opt-in; romanized order cannot be auto-detected.
+- `setSurnameFirst(true)` opts into first-token surname order for space-separated
+  names (`Mao Zedong` → last `Mao`); see [Surname-first input](#surname-first-input)
+  for comma handling and multi-token surnames. Romanized order cannot be auto-detected.
 - `setNicknameDelimiters(['<<' => '>>'])` **replaces** the default pairs
   (`()[]{}<>` and quotes). An empty array restores the defaults; it does not
   disable nicknames. At most 32 valid pairs are used; opener and closer strings
@@ -289,6 +290,30 @@ Fluent setters on `Parser`:
   only. Comma forms and `setSurnameFirst(true)` use dedicated sub-parsers that
   always build their own mapper lists from the language dictionaries. Pass `[]`
   to restore the default pipeline.
+
+### Surname-first input
+
+`setSurnameFirst(true)` takes the first token after any recognized leading
+salutation as the surname when at least two tokens remain. It does not infer
+multi-token surnames: `van Gogh Vincent` gives last name `Van`, first name `Gogh`,
+and middle name `Vincent`. Use an explicit given-name segment for those surnames:
+
+```php
+$parser = (new Parser())->setSurnameFirst(true);
+$name = $parser->parse('van Gogh, Vincent');
+$name->getLastname();   // "van Gogh"
+$name->getFirstname();  // "Vincent"
+```
+
+A comma takes precedence when its tail supplies a given name, as above. An
+empty tail (`Kim Jong Un,`) or credential-only tail (`Kim Jong Un, MD`) still
+uses first-token surname order, giving last name `Kim`, first name `Jong`, and
+middle name `Un`; the latter also keeps suffix `MD`. Merely appending a comma
+or credential does not establish a multi-token surname boundary.
+
+When fewer than two tokens remain after leading salutations, this split is not
+applied and ordinary mapping decides the fields: `Kim` stays a first name,
+while `Dr. Kim` has salutation `Dr.` and last name `Kim`.
 
 ### Parsing limits
 
