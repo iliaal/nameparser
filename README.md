@@ -120,6 +120,20 @@ $parser->parse('Dr. Jane A. Doe DDS')->toArray();
 `lastname` already includes any particle prefix (`de la Torre`);
 `lastname_prefix` is a convenience extract, not a component to prepend.
 
+### Editing parsed parts
+
+`getParts()` returns the part objects used by the `Name`. Calling `setValue()`
+on an ordinary name part updates its normalized output, even after a getter has
+cached it: changing a `Lastname` from `smith` to `jones` changes `getLastname()`
+from `Smith` to `Jones`. Initials also normalize their current value.
+
+Salutations, suffixes, and surname/middle-name prefixes keep the rendered form
+supplied at construction. Their `setValue()` changes only `getValue()`, so a
+suffix constructed from `md` with rendered form `MD` still renders `MD` after
+changing its raw value. Replace these objects through `Name::setParts()` when
+changing their rendered form. Editing parts does not update `getSource()` or
+rerun parsing; parse a revised input string when you need a new interpretation.
+
 ### Joint names
 
 An honorific can cover two people. The parser still returns one `Name`, and the
