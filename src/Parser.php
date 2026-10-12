@@ -210,7 +210,7 @@ class Parser
     {
         // Avoid empty Firstname parts from trailing commas.
         if (trim($given) === '') {
-            // Credential-only tails still honor caller-asserted surname-first order.
+            // Empty comma tails still honor caller-asserted surname-first order.
             if ($this->surnameFirst) {
                 $surnameTokens = $this->tokenizeWords(trim($surname));
                 $taken = $this->takeSurnameFirst($surnameTokens);
@@ -887,7 +887,7 @@ class Parser
 
     /**
      * peel leading salutations and take the next token as the surname. Returns
-     * null when fewer than two name tokens remain after peeling.
+     * null when fewer than two tokens remain after peeling.
      *
      * @param  list<string>  $tokens
      * @return array{0: string, 1: list<string>}|null
@@ -1131,9 +1131,12 @@ class Parser
     }
 
     /**
-     * read space-separated input surname-first (CJK order). Only affects names
-     * without a comma. This path uses the comma-form sub-parsers, so a custom
-     * setMappers() list does not apply.
+     * Read space-separated input in first-token surname order after leading
+     * salutations. Empty and credential-only comma tails also use this order;
+     * an explicit comma given-name segment takes precedence. Multi-token
+     * surnames need that explicit boundary. With fewer than two tokens after
+     * salutations, ordinary mapping applies. The surname-first split uses the
+     * comma-form sub-parsers, so a custom setMappers() list does not apply there.
      */
     public function setSurnameFirst(bool $surnameFirst): Parser
     {
