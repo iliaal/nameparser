@@ -330,6 +330,15 @@ instead of tokenizing the source again. Explicitly supplied token arrays are
 also limited to 65,536 entries and 1,048,576 aggregate token bytes; supplying
 tokens does not bypass validation of the original string.
 
+Custom nickname delimiters have a separate comma-splitting limit. If any valid
+configured opener or closer is longer than one byte (including ASCII `<<` / `>>`
+and Unicode `«` / `»`), nickname commas are not shielded when the normalized
+input exceeds 4,096 bytes. This applies even when that longer pair is unused in
+the input. A comma inside a nickname can then become a surname/given-name
+separator and change the parsed fields. For long rows with nickname commas,
+use only single-byte delimiter pairs, such as the defaults; their byte-level
+scan has no 4,096-byte cutoff. The overall input limits still apply.
+
 ### Ambiguous inputs
 
 Some inputs have no structural signal. A comma followed only by credentials can
