@@ -238,7 +238,8 @@ class LastnameMapper extends AbstractMapper
 
     /**
      * Prefer a firstname over a lone prefix unless surname-only context or an
-     * adjacent prefix (ignoring nicknames) resolves the ambiguity.
+     * adjacent prefix (ignoring nicknames) selects the surname interpretation.
+     * This heuristic can absorb a given name such as Della in Della van Berg.
      *
      * @param  PartArray  $parts
      */
@@ -250,7 +251,7 @@ class LastnameMapper extends AbstractMapper
             return false;
         }
 
-        // Nicknames do not interrupt the adjacent particles establishing a surname.
+        // Nicknames do not interrupt the adjacent-particle surname heuristic.
         $next = $this->skipNicknameParts($parts, $index + 1);
         if (($parts[$next] ?? null) instanceof LastnamePrefix) {
             return true;
