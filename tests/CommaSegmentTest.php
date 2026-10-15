@@ -353,7 +353,7 @@ class CommaSegmentTest extends TestCase
 
     /**
      * Use multibyte delimiters to exercise the 4096-byte shielding limit;
-     * the ASCII scan has no length cap.
+     * the scan for exclusively single-byte delimiter pairs has no such cutoff.
      *
      * @return array<string, array{int, string, string}>
      */

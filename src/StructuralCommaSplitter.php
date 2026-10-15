@@ -96,7 +96,8 @@ final class StructuralCommaSplitter
             return self::maskAscii($name, $pairs, $symmetric);
         }
 
-        // Bound character-array allocation for multibyte delimiters; longer input is unshielded.
+        // Any multi-character or multibyte endpoint selects this bounded character scan.
+        // Above 4096 bytes, even commas inside single-byte pairs in a mixed config are unshielded.
         if (strlen($name) > 4096) {
             return $name;
         }

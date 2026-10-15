@@ -30,7 +30,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Control characters and bidi/format characters are stripped during normalization, so they can no longer survive into name fields and downstream exports.
 - Nickname delimiters containing a comma, NUL, whitespace, or control characters are ignored instead of silently corrupting the structural-comma split.
 - The token budget counts the same separator class the parser splits on, and the uniform-uppercase scan is capped, so hostile separator-heavy rows stay within the documented 65,536-token cost.
-- The structural-comma shield degrades to a bounded byte-level mask past 4 KB instead of switching off, keeping surname/given assignment stable on long rows.
+- Single-byte nickname delimiter configurations use a bounded byte-level structural-comma mask without the 4,096-byte cutoff. Configurations containing any valid multi-character or multibyte delimiter still stop shielding nickname commas above 4,096 bytes; see the README parsing limits.
 - `Smith, Jr` reads like `Smith, Junior` (Lastname plus given name) instead of a bare suffix with no given name.
 - `Parser` internals are split into `StructuralCommaSplitter`, `CommaCredentialTail`, and `SegmentParserFactory` with `TokenCredentialClass` replacing the credential classifier ints; `Name` dispatches on `::class` constants. No behavior change.
 
