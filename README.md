@@ -362,6 +362,15 @@ that case. Use an explicit given-name segment, for example
 `Hidalgo Castillo, Maria, MD`, or post-process feeds where the left side is a
 surname-only field.
 
+In default Western-order parsing, a given name that is also a surname particle
+can be absorbed into a following particle surname. If `Della` is the given name, `Della van Berg` is parsed
+incorrectly: `getFirstname()` is empty and `getLastname()` is `della van Berg`.
+`Della Smith` does keep `Della` as the given name; the additional particle is
+what triggers the surname-chain heuristic. A nickname or credential does not
+fix this (`Della (Bob) van Berg` and `Della van Berg, MD` have the same missing
+first name). When you know the boundary, use `van Berg, Della` or
+`van Berg, Della, MD` to preserve the intended given name and surname.
+
 An anglicised Irish surname with the fada dropped is undecidable the same way.
 `Eamon O Cuiv` and `John F Kennedy` have identical structure and casing, so a
 bare `O` between spaces stays a middle initial. The fada form `Ó` resolves as a particle, and the joined

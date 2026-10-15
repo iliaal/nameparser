@@ -105,7 +105,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Empty nickname closer strings are dropped with empty openers, so invalid delimiter config degrades to a no-op instead of an unclosable span.
 - Uniform-uppercase detection on comma input splits on commas as well as whitespace, so comma-dense rows do not force a full-string Unicode letters scan.
 - Comma-separated non-empty segments count toward the parser's 65,536-token ceiling.
-- Credential-only comma tails no longer reinterpret given names such as `Della` and `Van` as surname particles.
+- Credential-only comma tails no longer reinterpret a given name that Western parsing preserves: `Della Smith, MD` and `Van Smith, MD` retain `Della` and `Van` as given names. A following surname particle can still cause first-name loss, as in `Della van Berg, MD`; see the README ambiguity notes.
 - A quoted nickname whose closing quote immediately precedes a structural comma stays intact.
 - Connector-heavy salutation input is validated in linear time, and title-only connector chains no longer create a phantom joint partner.
 - Joint honorifics retain a terminal title-colliding shared surname (`Mr. and Mrs. Lord`) while still rejecting multi-word and connector-led title-only chains.

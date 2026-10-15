@@ -86,7 +86,7 @@ class SurnamePrefixTest extends TestCase
     }
 
     /**
-     * Adjacent particles resolve surname ambiguity without a firstname.
+     * Adjacent particles select the surname interpretation without a firstname.
      *
      * @return array<string, array{string, string, string}>
      */
