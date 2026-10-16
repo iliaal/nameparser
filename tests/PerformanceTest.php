@@ -3,8 +3,10 @@
 namespace Tests\Iliaal\NameParser;
 
 use Iliaal\NameParser\Confidence;
+use Iliaal\NameParser\Mapper\NicknameMapper;
 use Iliaal\NameParser\Parser;
 use Iliaal\NameParser\Part\Lastname;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 class PerformanceTest extends TestCase
@@ -13,6 +15,9 @@ class PerformanceTest extends TestCase
 
     // Linear doubling costs 2x CPU; allow 25% noise without accepting persistent superlinear scaling.
     private const float MAX_SCALING_RATIO = 2.5;
+
+    // A 4x size step costs 4x under linear scaling and 16x under quadratic; allow 2x noise headroom.
+    private const float MAX_QUADRUPLED_SCALING_RATIO = 8.0;
 
     private const int SCALING_SAMPLES = 3;
 
@@ -61,6 +66,74 @@ class PerformanceTest extends TestCase
             static fn(int $size): string => str_repeat('Dr ', $size) . 'Kim Jong',
             true,
         );
+    }
+
+    /**
+     * @return array<string, array{string, string, bool}>
+     */
+    public static function singleLetterSuffixTailProvider(): array
+    {
+        return [
+            'comma V' => ['Smith, ', 'V ', false],
+            'comma X' => ['Smith, ', 'X ', false],
+            'salutation title V' => ['Mr. Lord ', 'V ', false],
+            'salutation title X' => ['Mr. Lord ', 'X ', false],
+            'joint salutation V' => ['Mr. and Mrs. ', 'V ', false],
+            'joint salutation X' => ['Mr. and Mrs. ', 'X ', false],
+            'comma credential tail V' => ['Smith, John, 123 ', 'V ', false],
+            'comma credential tail X' => ['Smith, John, 123 ', 'X ', false],
+            'surname-first V' => ['Kim ', 'V ', true],
+            'surname-first X' => ['Kim ', 'X ', true],
+            'wrapped ma credential' => ['John ', '(MA) ', false],
+        ];
+    }
+
+    #[DataProvider('singleLetterSuffixTailProvider')]
+    public function testSuffixTailCandidatesRemainLinearAtBatchScale(string $prefix, string $unit, bool $surnameFirst): void
+    {
+        $this->assertLinearScaling(
+            static fn(int $size): string => $prefix . str_repeat($unit, $size),
+            $surnameFirst,
+            8000,
+            32000,
+            self::MAX_QUADRUPLED_SCALING_RATIO,
+        );
+    }
+
+    public function testConfidenceSingleLetterSuffixTailRemainsLinear(): void
+    {
+        $measure = fn(int $size): float => $this->medianCpuSeconds(
+            static function () use ($size): void {
+                Confidence::assess(
+                    '(Lord) ' . str_repeat('X ', $size),
+                    null,
+                    null,
+                    null,
+                    NicknameMapper::DEFAULT_DELIMITERS,
+                );
+            },
+            1,
+        );
+
+        $measure(8000);
+        $measure(32000);
+        $smallSamples = [];
+        $largeSamples = [];
+        for ($sample = 0; $sample < self::SCALING_SAMPLES; ++$sample) {
+            if ($sample % 2 === 0) {
+                $smallSamples[] = $measure(8000);
+                $largeSamples[] = $measure(32000);
+            } else {
+                $largeSamples[] = $measure(32000);
+                $smallSamples[] = $measure(8000);
+            }
+        }
+
+        $small = $this->median($smallSamples);
+        $large = $this->median($largeSamples);
+
+        $this->assertLessThan(self::MAX_SECONDS, $large);
+        $this->assertLessThan(($small * self::MAX_QUADRUPLED_SCALING_RATIO) + 0.005, $large);
     }
 
     public function testNestedNicknameDepthRemainsBoundedAtBatchScale(): void
@@ -361,6 +434,7 @@ class PerformanceTest extends TestCase
         bool $surnameFirst = false,
         int $smallSize = 16000,
         int $largeSize = 32000,
+        float $maxRatio = self::MAX_SCALING_RATIO,
     ): void {
         $smallInput = $input($smallSize);
         $largeInput = $input($largeSize);
@@ -384,7 +458,7 @@ class PerformanceTest extends TestCase
 
         $this->assertLessThan(self::MAX_SECONDS, $large);
         $this->assertLessThan(
-            ($small * self::MAX_SCALING_RATIO) + 0.005,
+            ($small * $maxRatio) + 0.005,
             $large,
         );
     }

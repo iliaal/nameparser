@@ -15,6 +15,22 @@ class SuffixMapper extends AbstractMapper
 {
     private ?bool $uniformUpperOverride = null;
 
+    private bool $tailScanActive = false;
+
+    /**
+     * First raw name token index in the parts under the active tail scan,
+     * computed once so each single-letter candidate avoids a prefix rescan.
+     */
+    private ?int $tailFirstNameIndex = null;
+
+    /**
+     * Per-index nearest preceding part that is not a nickname or span-wrapped
+     * token (-1 when none), built once per tail scan for the "ma" guard.
+     *
+     * @var list<int>|null
+     */
+    private ?array $tailInitialAnchors = null;
+
     /**
      * Suffix keys that also occur as real given names / surnames (Vietnamese
      * "Do"/"Vi", Chinese "Ma", roman numerals, short allied-health creds).
@@ -145,66 +161,75 @@ class SuffixMapper extends AbstractMapper
         $mappedSuffix = false;
         $crossedBridge = false;
         $spanOpenerPrefix = null;
-        for ($k = count($parts) - 1; $k >= 0; $k--) {
-            if (isset($leadingSet[$k])) {
-                continue;
-            }
+        $this->tailScanActive = true;
+        $this->tailFirstNameIndex = null;
+        $this->tailInitialAnchors = null;
+        try {
+            for ($k = count($parts) - 1; $k >= 0; $k--) {
+                if (isset($leadingSet[$k])) {
+                    continue;
+                }
 
-            $part = $parts[$k];
+                $part = $parts[$k];
 
-            // Nicknames and ignored connectors do not end a credential run.
-            if ($part instanceof Nickname || $part instanceof Ignored) {
-                continue;
-            }
+                // Nicknames and ignored connectors do not end a credential run.
+                if ($part instanceof Nickname || $part instanceof Ignored) {
+                    continue;
+                }
 
-            if (! is_string($part)) {
-                break;
-            }
-
-            if (! $this->isSuffix($part)) {
-                if (! $this->canSkipInterruptedTailAtIndex($k)) {
+                if (! is_string($part)) {
                     break;
                 }
 
-                if ($this->isTailNoise($part)) {
-                    if ($this->isSpanTailToken($parts, $k, $spanOpenerPrefix ??= $this->buildSpanOpenerPrefix($parts))) {
+                if (! $this->isSuffix($part)) {
+                    if (! $this->canSkipInterruptedTailAtIndex($k)) {
                         break;
                     }
 
-                    $noiseIndexes[$k] = true;
+                    if ($this->isTailNoise($part)) {
+                        if ($this->isSpanTailToken($parts, $k, $spanOpenerPrefix ??= $this->buildSpanOpenerPrefix($parts))) {
+                            break;
+                        }
+
+                        $noiseIndexes[$k] = true;
+
+                        continue;
+                    }
+
+                    $uniformUpper ??= $this->isUniformUpperContext($parts, $this->uniformUpperOverride);
+
+                    // Crossing a name ends the candidate run: JM in "John Paul JM Smith MD" is initials.
+                    if (! $crossedBridge && ! $uniformUpper && $this->isUnknownCredentialCandidate($part)) {
+                        $candidateIndexes[$k] = true;
+
+                        continue;
+                    }
+
+                    if (! $mappedSuffix) {
+                        break;
+                    }
+
+                    $crossedBridge = true;
 
                     continue;
                 }
 
-                $uniformUpper ??= $this->isUniformUpperContext($parts, $this->uniformUpperOverride);
-
-                // Crossing a name ends the candidate run: JM in "John Paul JM Smith MD" is initials.
-                if (! $crossedBridge && ! $uniformUpper && $this->isUnknownCredentialCandidate($part)) {
-                    $candidateIndexes[$k] = true;
-
-                    continue;
-                }
-
-                if (! $mappedSuffix) {
+                // Preserve nickname closers such as "(Bob Jr)"; an unpaired "MD)" can still be a suffix.
+                if ($this->isSpanTailToken($parts, $k, $spanOpenerPrefix ??= $this->buildSpanOpenerPrefix($parts))) {
                     break;
                 }
 
-                $crossedBridge = true;
+                if (! $this->canMapAtIndex($parts, $part, $k)) {
+                    break;
+                }
 
-                continue;
+                $suffixIndexes[] = $k;
+                $mappedSuffix = true;
             }
-
-            // Preserve nickname closers such as "(Bob Jr)"; an unpaired "MD)" can still be a suffix.
-            if ($this->isSpanTailToken($parts, $k, $spanOpenerPrefix ??= $this->buildSpanOpenerPrefix($parts))) {
-                break;
-            }
-
-            if (! $this->canMapAtIndex($parts, $part, $k)) {
-                break;
-            }
-
-            $suffixIndexes[] = $k;
-            $mappedSuffix = true;
+        } finally {
+            $this->tailScanActive = false;
+            $this->tailFirstNameIndex = null;
+            $this->tailInitialAnchors = null;
         }
 
         if ($suffixIndexes === []) {
@@ -654,7 +679,23 @@ class SuffixMapper extends AbstractMapper
      */
     private function hasPrecedingNameToken(array $parts, int $index): bool
     {
-        for ($i = 0; $i < $index; $i++) {
+        if ($this->tailScanActive) {
+            $this->tailFirstNameIndex ??= $this->firstNameTokenIndex($parts, count($parts));
+
+            return $this->tailFirstNameIndex < $index;
+        }
+
+        return $this->firstNameTokenIndex($parts, $index) < $index;
+    }
+
+    /**
+     * first index below $limit holding a raw name token, or $limit when none
+     *
+     * @param  PartArray  $parts
+     */
+    private function firstNameTokenIndex(array $parts, int $limit): int
+    {
+        for ($i = 0; $i < $limit; $i++) {
             $part = $parts[$i];
             if (! is_string($part)) {
                 continue;
@@ -665,11 +706,11 @@ class SuffixMapper extends AbstractMapper
             }
 
             if (Text::letters($part) !== '') {
-                return true;
+                return $i;
             }
         }
 
-        return false;
+        return $limit;
     }
 
     private function isUnknownCredentialCandidate(string $part): bool
@@ -691,27 +732,56 @@ class SuffixMapper extends AbstractMapper
      */
     private function isPrecededBySingleInitial(array $parts, int $index): bool
     {
-        // Nicknames must not change the preceding-initial signal in "John A (Bob) MA".
-        for ($i = $index - 1; $i >= 0; $i--) {
-            $previous = $parts[$i];
-
-            if ($previous instanceof Nickname) {
-                continue;
-            }
-
-            if (is_string($previous)
-                && Text::isSpanWrappedToken($previous, $this->spanDelimiters)) {
-                continue;
-            }
-
-            if (! is_string($previous)) {
-                return false;
-            }
-
-            return Text::graphemeLengthUpTo(Text::letters($previous), 2) === 1;
+        $anchor = $this->precedingInitialAnchor($parts, $index);
+        if ($anchor < 0) {
+            return false;
         }
 
-        return false;
+        $previous = $parts[$anchor];
+        if (! is_string($previous)) {
+            return false;
+        }
+
+        return Text::graphemeLengthUpTo(Text::letters($previous), 2) === 1;
+    }
+
+    /**
+     * @param  PartArray  $parts
+     */
+    private function precedingInitialAnchor(array $parts, int $index): int
+    {
+        if ($this->tailScanActive) {
+            if ($this->tailInitialAnchors === null) {
+                $anchors = [];
+                $anchor = -1;
+                foreach ($parts as $i => $part) {
+                    $anchors[] = $anchor;
+                    if (! $this->isInitialGuardTransparent($part)) {
+                        $anchor = $i;
+                    }
+                }
+                $this->tailInitialAnchors = $anchors;
+            }
+
+            return $this->tailInitialAnchors[$index];
+        }
+
+        for ($i = $index - 1; $i >= 0; $i--) {
+            if (! $this->isInitialGuardTransparent($parts[$i])) {
+                return $i;
+            }
+        }
+
+        return -1;
+    }
+
+    /**
+     * Nicknames must not change the preceding-initial signal in "John A (Bob) MA".
+     */
+    private function isInitialGuardTransparent(AbstractPart|string $part): bool
+    {
+        return $part instanceof Nickname
+            || (is_string($part) && Text::isSpanWrappedToken($part, $this->spanDelimiters));
     }
 
     protected function isUpperCase(string $part): bool

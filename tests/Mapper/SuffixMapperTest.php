@@ -3,7 +3,9 @@
 namespace Tests\Iliaal\NameParser\Mapper;
 
 use Iliaal\NameParser\Language\English;
+use Iliaal\NameParser\Mapper\NicknameMapper;
 use Iliaal\NameParser\Mapper\SuffixMapper;
+use Iliaal\NameParser\Part\AbstractPart;
 use Iliaal\NameParser\Part\Firstname;
 use Iliaal\NameParser\Part\Lastname;
 use Iliaal\NameParser\Part\Suffix;
@@ -194,6 +196,39 @@ class SuffixMapperTest extends AbstractMapperTestCase
         $this->assertCount(1, $mapped);
         $this->assertInstanceOf(Suffix::class, $mapped[0]);
         $this->assertSame('LAc', $mapped[0]->getValue());
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function singleLetterSuffixTailProvider(): array
+    {
+        return [
+            'V' => ['V'],
+            'X' => ['X'],
+        ];
+    }
+
+    #[DataProvider('singleLetterSuffixTailProvider')]
+    public function testSingleLetterSuffixTailChecksEachTokenBoundedTimes(string $token): void
+    {
+        foreach ([1000, 2000] as $count) {
+            $mapper = new class (English::SUFFIXES, true, 0, NicknameMapper::DEFAULT_DELIMITERS) extends SuffixMapper {
+                public int $suffixChecks = 0;
+
+                protected function isSuffix(AbstractPart|string $part): bool
+                {
+                    ++$this->suffixChecks;
+
+                    return parent::isSuffix($part);
+                }
+            };
+
+            $mapped = $mapper->map(array_fill(0, $count, $token));
+
+            $this->assertCount($count, array_filter($mapped, static fn(mixed $part): bool => $part instanceof Suffix));
+            $this->assertLessThanOrEqual((3 * $count) + 8, $mapper->suffixChecks, "isSuffix calls for {$count} tokens");
+        }
     }
 
     /**
