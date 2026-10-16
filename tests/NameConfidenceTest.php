@@ -142,6 +142,15 @@ class NameConfidenceTest extends TestCase
         );
     }
 
+    public function testParsedConfidenceIgnoresShieldedCommasBetweenTokensAtTheTokenLimit(): void
+    {
+        $input = 'John "' . str_repeat('a,', 65534) . '" Smith';
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame(['ambiguous' => false, 'notes' => []], $name->getConfidence());
+    }
+
     /**
      * @return array<string, array{string, string, string}>
      */

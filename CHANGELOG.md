@@ -6,14 +6,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- Long runs of single-letter roman suffix tokens no longer cost quadratic CPU. A comma, salutation, comma-credential, or surname-first name followed by many `I`, `V`, or `X` tokens (`Smith, V V V ...`) rescanned every earlier token for each candidate, so a 16 KB row took about 20 s of CPU and a row near the 1 MiB limit could take many minutes. The suffix scan now finds the preceding name token once per pass, and a 16 KB row takes about 0.03 s. Runs of parenthesized `(MA)` credentials had the same cost and are fixed too. Earlier notes that described hostile-input parsing as linear did not hold for these shapes.
+- `setWhitespace()` now throws `InvalidArgumentException` for a whitespace set that is not valid UTF-8, instead of falling back to byte-level collapsing. With such a set, such as `" \xA0"` written for a no-break space, collapsing split multibyte characters and control stripping was skipped, so escape, bell, and bidi override characters and invalid UTF-8 reached name fields and exports. `parse()`, `Confidence::assess()`, and the `Name` constructor apply the same check, and control stripping now always runs on scrubbed input, so output is always valid UTF-8.
+- Normalization strips every Unicode format character (category Cf), not only a fixed list of bidi and zero-width characters, so the soft hyphen, tag characters (which can carry hidden text), and interlinear annotation marks no longer reach name fields. The line and paragraph separators U+2028 and U+2029 become spaces instead of passing through inside a token. Variation selectors are kept.
+- An empty whitespace set (`setWhitespace('')`) no longer skips control stripping. C0, C1, and bidi control characters are removed as with any other set, and tab stays a separator.
+
 ### Fixed
+
+- With many custom nickname delimiter pairs, a row near the 65,536-token limit no longer exhausts memory. The suffix scan kept one array slot per pair per token (about 75 MB peak for 32 pairs); it now keeps compact state only for pairs that open a span, so the same row peaks at about 19 MB and fits a 64 MB `memory_limit`.
+- `Confidence` counts names the way the parse maps them, so a name-colliding title followed by one surname is flagged even when a single-letter suffix follows (`Lord Ashcroft V`) or the title is wrapped (`"Lord" Ashcroft`, `(Lord) Ashcroft`). `Lord Junior` is flagged for the same reason, while `"Lord", Smith` still reads `Lord` as the surname and stays unflagged.
+- An internal apostrophe no longer hides a trailing credential: `John D'Angelo MD'` keeps `D'Angelo` as the last name and `MD` as the suffix.
+- A single-letter roman token after a given name in a comma segment stays an initial: `Smith, Michelle, I` gives first name `Michelle` and initial `I`.
+- Replacement nickname delimiters keep literal quotes in the nickname: with `setNicknameDelimiters(['[' => ']'])`, `John ['Twas] Smith` gives nickname `'Twas`.
+- `Name::getConfidence()` tokenizes the way the parser does, so NUL whitespace and nickname-shielded commas no longer split or over-count tokens, and a parsed row with many shielded commas no longer throws `LengthException`.
 
 - Nicknames between surname particles no longer invent a given name:
   `van (Bob) der Berg` keeps the complete surname `van der Berg`.
 - Combined initials no longer split digits, punctuation, or caseless characters
   out of a token, so `Smith, A1 John` keeps `A1` as the first name.
-- Keep confidence tokenization, delimiter handling, and comma credential tails
-  linear and bounded for hostile input while preserving parser/config parity.
+- Confidence tokenization, delimiter handling, and comma credential tails scan
+  each token a bounded number of times instead of rescanning earlier tokens.
 
 ## [1.5.0] - 2026-09-04
 

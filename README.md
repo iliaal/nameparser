@@ -296,6 +296,8 @@ Fluent setters on `Parser`:
   disable nicknames. At most 32 valid pairs are used; opener and closer strings
   longer than 64 bytes are ignored.
 - `setWhitespace` and `setMaxSalutationIndex` tune collapse and mapper gates.
+  A whitespace set that is not valid UTF-8 throws `InvalidArgumentException`;
+  write a no-break space as `"\u{00A0}"`, not the raw byte `"\xA0"`.
 - `setMaxCombinedInitials($limit)` accepts 0 through 64. Values outside that
   range throw `InvalidArgumentException`; combined-token expansion is also
   capped at 131,072 expanded initial parts per parse and throws
@@ -333,8 +335,11 @@ while `Dr. Kim` has salutation `Dr.` and last name `Kim`.
 
 `parse()` accepts at most 1,048,576 input bytes and 65,536 non-empty tokens.
 It throws `LengthException` before comma segmentation or mapper allocation when
-either limit is exceeded. These bounds keep malformed import rows from
-exhausting a PHP worker while retaining batch-scale inputs. Consecutive empty
+either limit is exceeded. Below the limits, parsing cost is designed to grow
+linearly with input size, and the performance suite checks this for repeated
+quote, nickname, credential, single-letter suffix, and salutation runs. Treat
+the limits as a size cap, not a per-row time guarantee: if rows come from an
+untrusted source, apply your own time budget per batch. Consecutive empty
 comma segments are coalesced during structural splitting, so a delimiter-only
 row at the byte limit does not allocate one array entry per comma.
 
@@ -352,6 +357,13 @@ the input. A comma inside a nickname can then become a surname/given-name
 separator and change the parsed fields. For long rows with nickname commas,
 use only single-byte delimiter pairs, such as the defaults; their byte-level
 scan has no 4,096-byte cutoff. The overall input limits still apply.
+
+Normalization strips C0 and C1 control characters and every Unicode format
+character (category Cf): bidi controls, zero-width characters including ZWJ and
+ZWNJ, the soft hyphen, and tag characters. The line and paragraph separators
+U+2028 and U+2029 become spaces. Invalid UTF-8 bytes are replaced with `?`.
+Variation selectors are kept, so ideographic variants in names survive. With
+`setWhitespace('')`, tab is kept as a separator.
 
 ### Ambiguous inputs
 
