@@ -180,6 +180,10 @@ class ConfidenceTest extends TestCase
             'single-quoted title' => ["'Lord' Ashcroft", "'Lord'"],
             'parenthesized title' => ['(Lord) Ashcroft', '(Lord)'],
             'quoted pastor' => ['"Pastor" Gonzalez', '"Pastor"'],
+            'trailing connector' => ['Lord Ashcroft and', 'Lord'],
+            'wrapped title, trailing connector' => ['"Lord" Ashcroft and', '"Lord"'],
+            'second title' => ['Lord Pastor Smith', 'Lord'],
+            'wrapped title, second title' => ['(Lord) Pastor Smith', '(Lord)'],
         ];
     }
 

@@ -162,6 +162,10 @@ class NameConfidenceTest extends TestCase
             'double-quoted title' => ['"Lord" Ashcroft', 'Ashcroft', ''],
             'single-quoted title' => ["'Lord' Ashcroft", 'Ashcroft', ''],
             'parenthesized title' => ['(Lord) Ashcroft', 'Ashcroft', ''],
+            'trailing connector' => ['Lord Ashcroft and', 'Ashcroft', ''],
+            'wrapped title, trailing connector' => ['"Lord" Ashcroft and', 'Ashcroft', ''],
+            'second title' => ['Lord Pastor Smith', 'Smith', ''],
+            'wrapped title, second title' => ['(Lord) Pastor Smith', 'Smith', ''],
         ];
     }
 

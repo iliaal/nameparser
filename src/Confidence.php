@@ -107,7 +107,7 @@ class Confidence
             && ($salutations === null || array_key_exists($key, $salutations))) {
             // Decorations do not resolve title/name ambiguity; a comma needs
             // name-bearing content on both sides.
-            $nameTokens = self::rawNameTokens(self::mapDecorations($tokens, $suffixes, $nicknameDelimiters));
+            $nameTokens = self::rawNameTokens(self::mapDecorations($tokens, $suffixes, $nicknameDelimiters, $salutations));
             if (count($nameTokens) === 1
                 && ! self::hasDecidingStructuralComma($normalized, $suffixes, $nicknameDelimiters)) {
                 $notes["'{$lead}' could be a name or a salutation; nothing in the input decides it"] = true;
@@ -442,29 +442,41 @@ class Confidence
     }
 
     /**
-     * Mirrors the single-segment pipeline: SalutationMapper claims the lead
-     * before NicknameMapper can read a wrapped title as a nickname, and the
-     * reserved-2 SuffixMapper passes then run around NicknameMapper.
+     * Mirrors the single-segment pipeline's decoration mappers, so a wrapped
+     * lead title, a second title, or an unattributed connector is classified
+     * the way the parse classifies it. The lead is the title-or-name subject
+     * under test, so it never counts as one of the remaining name tokens.
      *
      * @param  list<string>  $tokens
      * @param  array<int|string, string>|null  $suffixes
      * @param  array<string, string>|null  $nicknameDelimiters
+     * @param  array<int|string, string>|null  $salutations
      * @return array<int, \Iliaal\NameParser\Part\AbstractPart|string>
      */
     private static function mapDecorations(
         array $tokens,
         ?array $suffixes,
         ?array $nicknameDelimiters = null,
+        ?array $salutations = null,
     ): array {
         $suffixes ??= English::SUFFIXES;
         $delimiters = self::delimiters($nicknameDelimiters);
+        $salutationMapper = new SalutationMapper(
+            $salutations ?? English::SALUTATIONS,
+            0,
+            false,
+            $suffixes,
+            $delimiters,
+        );
         $suffixMapper = new SuffixMapper($suffixes, false, 2, $delimiters);
         $nicknameMapper = new NicknameMapper($delimiters);
 
-        $parts = $tokens;
-        $parts[0] = new Salutation($tokens[0]);
+        $parts = $suffixMapper->map($nicknameMapper->map($suffixMapper->map($salutationMapper->map($tokens))));
+        if (is_string($parts[0] ?? null) || ($parts[0] ?? null) instanceof Salutation) {
+            unset($parts[0]);
+        }
 
-        return $suffixMapper->map($nicknameMapper->map($suffixMapper->map($parts)));
+        return $parts;
     }
 
     /**
