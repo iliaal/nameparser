@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-16
+
 ### Security
 
 - Long runs of single-letter roman suffix tokens no longer cost quadratic CPU. A comma, salutation, comma-credential, or surname-first name followed by many `I`, `V`, or `X` tokens (`Smith, V V V ...`) rescanned every earlier token for each candidate, so a 16 KB row took about 20 s of CPU and a row near the 1 MiB limit could take many minutes. The suffix scan now finds the preceding name token once per pass, and a 16 KB row takes about 0.03 s. Runs of parenthesized `(MA)` credentials were also quadratic, at a lower constant (about 1.5 s for 16 KB), and are fixed too. Earlier notes that described hostile-input parsing as linear did not hold for these shapes.
@@ -235,7 +237,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `setWhitespace()` now trims the configured characters from the edges of the input.
 - `setMaxSalutationIndex()` larger than the token count no longer emits undefined-array-key warnings.
 
-[Unreleased]: https://github.com/iliaal/nameparser/compare/1.5.0...HEAD
+[Unreleased]: https://github.com/iliaal/nameparser/compare/1.6.0...HEAD
+[1.6.0]: https://github.com/iliaal/nameparser/compare/1.5.0...1.6.0
 [1.5.0]: https://github.com/iliaal/nameparser/compare/1.4.1...1.5.0
 [1.4.1]: https://github.com/iliaal/nameparser/compare/1.4.0...1.4.1
 [1.4.0]: https://github.com/iliaal/nameparser/compare/v1.3.0...1.4.0
