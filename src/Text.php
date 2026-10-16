@@ -61,9 +61,20 @@ final class Text
     }
 
     /**
-     * Removes Cc controls and the bidi/format characters that reorder or
-     * hollow out display text; invalid UTF-8 is scrubbed first so the /u
-     * pass cannot fail and hand back the unstripped string.
+     * U+2028/U+2029 separate words like a line break, so they become spaces
+     * rather than being stripped and gluing the neighbouring tokens together.
+     */
+    public static function replaceLineSeparators(string $text): string
+    {
+        return str_replace(["\u{2028}", "\u{2029}"], ' ', $text);
+    }
+
+    /**
+     * Removes Cc controls and every Cf format character (bidi controls,
+     * zero-width characters, soft hyphen, tag characters): none is visible
+     * name content, and each can reorder, hide, or smuggle text. Invalid
+     * UTF-8 is scrubbed first so the /u pass cannot fail and hand back the
+     * unstripped string.
      */
     public static function stripControlChars(string $text, bool $preserveTab = false): string
     {
@@ -71,7 +82,7 @@ final class Text
             $text = mb_scrub($text, 'UTF-8');
         }
 
-        $pattern = '/[\p{Cc}\x{061C}\x{180E}\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{206F}\x{FEFF}]/u';
+        $pattern = '/[\p{Cc}\p{Cf}]/u';
         $stripped = $preserveTab
             ? preg_replace_callback(
                 $pattern,

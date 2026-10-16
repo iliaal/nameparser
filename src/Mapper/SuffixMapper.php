@@ -482,7 +482,7 @@ class SuffixMapper extends AbstractMapper
 
     /**
      * Record earlier unmatched openers per delimiter and position for O(1) tail checks.
-     * Each pair whose opener appears gets one byte per part ("\1" while a span is open);
+     * Each pair whose opener opens a span gets one byte per part ("\1" while a span is open);
      * pairs that never open are omitted. Return an empty table when no token can open a span.
      *
      * @param  PartArray  $parts

@@ -770,11 +770,11 @@ class Parser
      * normalize the name: collapse the configured whitespace run, then strip
      * what must never reach the mappers.
      *
-     * Strips Cc controls and the bidi/format Cf characters that reorder or
-     * hollow out display text (U+061C, U+180E, U+200B-U+200F, U+202A-U+202E,
-     * U+2060-U+2064, U+2066-U+206F, U+FEFF), so input cannot inject
-     * terminal/log sequences, truncate NUL-sensitive consumers, or spoof via
-     * bidi reordering. Everything else passes through untouched (no NFKC:
+     * Strips Cc controls and every Cf format character (bidi controls,
+     * zero-width characters, soft hyphen, tag characters), so input cannot
+     * inject terminal/log sequences, truncate NUL-sensitive consumers, spoof
+     * via bidi reordering, or hide text in invisible code points. U+2028 and
+     * U+2029 become spaces. Everything else passes through untouched (no NFKC:
      * "ﬁ" stays "ﬁ"). With an empty whitespace set, tab remains an intentional
      * separator exception; all other controls are still stripped. Whitespace
      * collapsing only decides what becomes a space, and always matches whole
@@ -792,7 +792,7 @@ class Parser
             $name = mb_scrub($name, 'UTF-8');
         }
 
-        $name = trim($name);
+        $name = trim(Text::replaceLineSeparators($name));
 
         // Strip NUL bytewise: it is the comma placeholder.
         $name = str_replace("\x00", '', $name);

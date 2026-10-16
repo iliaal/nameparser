@@ -164,7 +164,7 @@ class Confidence
     {
         $whitespace ??= " \r\n\t";
 
-        $normalized = trim(mb_scrub($original, 'UTF-8'));
+        $normalized = trim(Text::replaceLineSeparators(mb_scrub($original, 'UTF-8')));
         $normalized = str_replace("\x00", '', $normalized);
 
         if ($whitespace === '') {

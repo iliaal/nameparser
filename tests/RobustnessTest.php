@@ -518,6 +518,64 @@ class RobustnessTest extends TestCase
         $this->assertSame('John Smith', $name->getFullName());
     }
 
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function invisibleFormatCharacterProvider(): array
+    {
+        return [
+            'soft hyphen' => ["Jo\u{00AD}hn Smith"],
+            'tag characters' => ["John Sm\u{E0001}\u{E0041}\u{E007F}ith"],
+            'interlinear annotation' => ["John \u{FFF9}Sm\u{FFFB}ith"],
+            'arabic number sign' => ["John \u{0600}Smith"],
+            'zero-width joiner' => ["Jo\u{200D}hn Smith"],
+        ];
+    }
+
+    #[DataProvider('invisibleFormatCharacterProvider')]
+    public function testInvisibleFormatCharactersAreStripped(string $input): void
+    {
+        foreach ([new Parser(), (new Parser())->setWhitespace('')] as $parser) {
+            $name = $parser->parse($input);
+
+            $this->assertSame('John Smith', $name->getSource());
+            $this->assertSame('John', $name->getFirstname());
+            $this->assertSame('Smith', $name->getLastname());
+            $this->assertSame(0, preg_match('/\p{Cf}/u', implode('', $name->toArray())));
+        }
+    }
+
+    public function testVariationSelectorsSurviveFormatStripping(): void
+    {
+        $name = (new Parser())->parse("葛\u{E0100}飾 北斎");
+
+        $this->assertSame("葛\u{E0100}飾", $name->getFirstname());
+        $this->assertSame('北斎', $name->getLastname());
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function lineSeparatorProvider(): array
+    {
+        return [
+            'line separator' => ["John\u{2028}Smith"],
+            'paragraph separator run' => ["John\u{2029}\u{2029}Smith"],
+            'edge separators' => ["\u{2028}John Smith\u{2029}"],
+        ];
+    }
+
+    #[DataProvider('lineSeparatorProvider')]
+    public function testLineSeparatorsSeparateTokens(string $input): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame('John Smith', $name->getSource());
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame([], $name->getConfidence()['notes']);
+    }
+
     public function testEmptyWhitespacePreservesIntentionalTab(): void
     {
         $name = (new Parser())->setWhitespace('')->parse("Jo\tJohn Smith");
