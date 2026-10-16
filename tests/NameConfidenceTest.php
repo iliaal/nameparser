@@ -118,6 +118,40 @@ class NameConfidenceTest extends TestCase
         );
     }
 
+    /**
+     * @return array<string, array{string, string, string}>
+     */
+    public static function titleAndSingleSurnameProvider(): array
+    {
+        return [
+            'single-letter roman suffix' => ['Lord Ashcroft V', 'Ashcroft', 'V'],
+            'pastor roman suffix' => ['Pastor Gonzalez X', 'Gonzalez', 'X'],
+            'double-quoted title' => ['"Lord" Ashcroft', 'Ashcroft', ''],
+            'single-quoted title' => ["'Lord' Ashcroft", 'Ashcroft', ''],
+            'parenthesized title' => ['(Lord) Ashcroft', 'Ashcroft', ''],
+        ];
+    }
+
+    #[DataProvider('titleAndSingleSurnameProvider')]
+    public function testParsedTitlePlusSingleSurnameIsFlagged(string $input, string $lastname, string $suffix): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertNotSame('', $name->getSalutation());
+        $this->assertSame('', $name->getFirstname());
+        $this->assertSame($lastname, $name->getLastname());
+        $this->assertSame($suffix, $name->getSuffix());
+        $this->assertTrue($name->getConfidence()['ambiguous'], "expected '$input' to be flagged ambiguous");
+    }
+
+    public function testParsedFirstnamePlusSurnameStaysUnflagged(): void
+    {
+        $name = (new Parser())->parse('John Ashcroft V');
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertFalse($name->getConfidence()['ambiguous']);
+    }
+
     public function testParsedConfidenceUsesConfiguredSalutations(): void
     {
         $name = (new Parser([new German()]))->parse('Lord Ashcroft');

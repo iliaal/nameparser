@@ -7,6 +7,7 @@ use Iliaal\NameParser\Mapper\AbstractMapper;
 use Iliaal\NameParser\Mapper\NicknameMapper;
 use Iliaal\NameParser\Mapper\SalutationMapper;
 use Iliaal\NameParser\Mapper\SuffixMapper;
+use Iliaal\NameParser\Part\Salutation;
 
 /**
  * Advisory pass: flags inputs where a token collides with a credential and the
@@ -100,7 +101,7 @@ class Confidence
             // Decorations do not resolve title/name ambiguity; a comma needs
             // name-bearing content on both sides.
             $nameTokens = self::rawNameTokens(self::mapDecorations($tokens, $suffixes, $nicknameDelimiters));
-            if (count($nameTokens) === 2
+            if (count($nameTokens) === 1
                 && ! self::hasDecidingStructuralComma($normalized, $suffixes, $nicknameDelimiters)) {
                 $notes["'{$lead}' could be a name or a salutation; nothing in the input decides it"] = true;
             }
@@ -455,19 +456,29 @@ class Confidence
     }
 
     /**
+     * Mirrors the single-segment pipeline: SalutationMapper claims the lead
+     * before NicknameMapper can read a wrapped title as a nickname, and the
+     * reserved-2 SuffixMapper passes then run around NicknameMapper.
+     *
      * @param  list<string>  $tokens
      * @param  array<int|string, string>|null  $suffixes
      * @param  array<string, string>|null  $nicknameDelimiters
      * @return array<int, \Iliaal\NameParser\Part\AbstractPart|string>
      */
-    private static function mapDecorations(array $tokens, ?array $suffixes, ?array $nicknameDelimiters = null): array
-    {
-        ['suffix' => $suffixMapper, 'nickname' => $nicknameMapper] = AbstractMapper::decorationAnalyzers(
-            $suffixes ?? English::SUFFIXES,
-            $nicknameDelimiters ?? [],
-        );
+    private static function mapDecorations(
+        array $tokens,
+        ?array $suffixes,
+        ?array $nicknameDelimiters = null,
+    ): array {
+        $suffixes ??= English::SUFFIXES;
+        $delimiters = self::delimiters($nicknameDelimiters);
+        $suffixMapper = new SuffixMapper($suffixes, false, 2, $delimiters);
+        $nicknameMapper = new NicknameMapper($delimiters);
 
-        return $suffixMapper->map($nicknameMapper->map($tokens));
+        $parts = $tokens;
+        $parts[0] = new Salutation($tokens[0]);
+
+        return $suffixMapper->map($nicknameMapper->map($suffixMapper->map($parts)));
     }
 
     /**

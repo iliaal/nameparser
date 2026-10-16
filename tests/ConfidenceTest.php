@@ -161,6 +161,60 @@ class ConfidenceTest extends TestCase
         );
     }
 
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function parsedSuffixAndWrappedTitleCollisionProvider(): array
+    {
+        return [
+            'single-letter roman V' => ['Lord Ashcroft V', 'Lord'],
+            'single-letter roman I' => ['Lord Ashcroft I', 'Lord'],
+            'single-letter roman X' => ['Lord Ashcroft X', 'Lord'],
+            'lowercase roman' => ['Lord Ashcroft v', 'Lord'],
+            'all-lower roman' => ['lord ashcroft v', 'lord'],
+            'all-caps roman' => ['LORD ASHCROFT V', 'LORD'],
+            'roman before credential' => ['Lord Ashcroft I MD', 'Lord'],
+            'pastor roman' => ['Pastor Gonzalez V', 'Pastor'],
+            'dame roman' => ['Dame Smith I', 'Dame'],
+            'double-quoted title' => ['"Lord" Ashcroft', '"Lord"'],
+            'single-quoted title' => ["'Lord' Ashcroft", "'Lord'"],
+            'parenthesized title' => ['(Lord) Ashcroft', '(Lord)'],
+            'quoted pastor' => ['"Pastor" Gonzalez', '"Pastor"'],
+        ];
+    }
+
+    #[DataProvider('parsedSuffixAndWrappedTitleCollisionProvider')]
+    public function testTitleCollisionCountsNamesTheWayTheParseMapsThem(string $input, string $lead): void
+    {
+        $result = Confidence::assess($input);
+
+        $this->assertTrue($result['ambiguous'], "expected '$input' to be flagged ambiguous");
+        $this->assertSame(
+            ["'{$lead}' could be a name or a salutation; nothing in the input decides it"],
+            $result['notes'],
+        );
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function decidedTitleCollisionProvider(): array
+    {
+        return [
+            'no colliding title' => ['John Ashcroft V'],
+            'two names after title' => ['Lord Ashcroft Smith'],
+            'unambiguous title' => ['Dr. Ashcroft V'],
+            'comma form' => ['Lord, Jack'],
+            'span opened by wrapped title' => ['(Lord Bob) Ashcroft'],
+        ];
+    }
+
+    #[DataProvider('decidedTitleCollisionProvider')]
+    public function testDecidedTitleCollisionStaysUnflagged(string $input): void
+    {
+        $this->assertSame(['ambiguous' => false, 'notes' => []], Confidence::assess($input));
+    }
+
     public function testNonEmptyStructuralCommaResolvesSalutationCollision(): void
     {
         $this->assertSame(
