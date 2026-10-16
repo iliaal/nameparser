@@ -214,6 +214,14 @@ class ConfidenceTest extends TestCase
             'single-quoted comma surname' => ["'Lord', Smith"],
             'parenthesized comma surname' => ['(Lord), Smith'],
             'wrapped comma surname run' => ['(Lord) (Bob), Smith'],
+            'joint honorific' => ['Lord and Lady Smith'],
+            'joint honorific with ampersand' => ['Lord & Lady Smith'],
+            'joint honorific, colliding partner first' => ['Lady and Lord Smith'],
+            'wrapped joint honorific' => ['(Lord) and (Lady) Smith'],
+            'stacked Mr.' => ['Lord Mr. Ashcroft'],
+            'stacked Rev.' => ['Lord Rev. Smith'],
+            'stacked multi-word Rt Hon' => ['Lord Rt Hon Smith'],
+            'stacked Sir' => ['Lord Sir Smith'],
         ];
     }
 

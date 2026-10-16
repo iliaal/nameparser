@@ -9,6 +9,7 @@ use Iliaal\NameParser\Mapper\SalutationMapper;
 use Iliaal\NameParser\Mapper\SuffixMapper;
 use Iliaal\NameParser\Part\Nickname;
 use Iliaal\NameParser\Part\Salutation;
+use Iliaal\NameParser\Part\SalutationConnector;
 
 /**
  * Advisory pass: flags inputs where a token collides with a credential and the
@@ -107,8 +108,16 @@ class Confidence
             && ($salutations === null || array_key_exists($key, $salutations))) {
             // Decorations do not resolve title/name ambiguity; a comma needs
             // name-bearing content on both sides.
-            $nameTokens = self::rawNameTokens(self::mapDecorations($tokens, $suffixes, $nicknameDelimiters, $salutations));
-            if (count($nameTokens) === 1
+            $titleRunDecides = false;
+            $nameTokens = self::rawNameTokens(self::mapDecorations(
+                $tokens,
+                $suffixes,
+                $nicknameDelimiters,
+                $salutations,
+                $titleRunDecides,
+            ));
+            if (! $titleRunDecides
+                && count($nameTokens) === 1
                 && ! self::hasDecidingStructuralComma($normalized, $suffixes, $nicknameDelimiters)) {
                 $notes["'{$lead}' could be a name or a salutation; nothing in the input decides it"] = true;
             }
@@ -458,6 +467,7 @@ class Confidence
         ?array $suffixes,
         ?array $nicknameDelimiters = null,
         ?array $salutations = null,
+        bool &$titleRunDecides = false,
     ): array {
         $suffixes ??= English::SUFFIXES;
         $delimiters = self::delimiters($nicknameDelimiters);
@@ -472,11 +482,32 @@ class Confidence
         $nicknameMapper = new NicknameMapper($delimiters);
 
         $parts = $suffixMapper->map($nicknameMapper->map($suffixMapper->map($salutationMapper->map($tokens))));
+        $titleRunDecides = ($parts[0] ?? null) instanceof Salutation && self::absorbsDecidingTitle($parts);
         if (is_string($parts[0] ?? null) || ($parts[0] ?? null) instanceof Salutation) {
             unset($parts[0]);
         }
 
         return $parts;
+    }
+
+    /**
+     * A connector or an unambiguous title in the honorific run after the
+     * lead shows the lead is a title too ('Lord and Lady Smith',
+     * 'Lord Rev. Smith'); a run of name-colliding titles decides nothing.
+     *
+     * @param  array<int, \Iliaal\NameParser\Part\AbstractPart|string>  $parts
+     */
+    private static function absorbsDecidingTitle(array $parts): bool
+    {
+        for ($index = 1; ($parts[$index] ?? null) instanceof Salutation; $index++) {
+            $part = $parts[$index];
+            if ($part instanceof SalutationConnector
+                || ! isset(SalutationMapper::NAME_COLLIDING_KEYS[Text::key($part->getValue())])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
