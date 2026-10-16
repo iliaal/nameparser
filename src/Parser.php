@@ -776,7 +776,8 @@ class Parser
      * via bidi reordering, or hide text in invisible code points. U+2028 and
      * U+2029 become spaces. Everything else passes through untouched (no NFKC:
      * "ﬁ" stays "ﬁ"). With an empty whitespace set, tab remains an intentional
-     * separator exception; all other controls are still stripped. Whitespace
+     * exception: it is kept, not stripped, though it does not split tokens; all
+     * other controls are still stripped. Whitespace
      * collapsing only decides what becomes a space, and always matches whole
      * code points: setWhitespace() and parse() reject a set that is not valid
      * UTF-8. Invalid input bytes are scrubbed to "?" before collapsing, and
@@ -801,10 +802,10 @@ class Parser
             $name = preg_replace($this->normalizePattern($whitespace), ' ', $name) ?? $name;
 
             // Custom edge whitespace becomes spaces only after the first trim().
-            return Text::stripControlChars(trim($name));
+            return trim(Text::stripControlChars(trim($name)));
         }
 
-        return Text::stripControlChars($name, true);
+        return trim(Text::stripControlChars($name, true), ' ');
     }
 
     private function normalizePattern(string $whitespace): string

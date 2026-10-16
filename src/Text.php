@@ -252,7 +252,7 @@ final class Text
     {
         return str_contains($delimiter, ',')
             || str_contains($delimiter, "\x00")
-            || preg_match('/[\s\p{Cc}]/u', $delimiter) === 1;
+            || preg_match('/[\s\p{Cc}\p{Cf}]/u', $delimiter) === 1;
     }
 
     public static function isCredentialTailNoise(string $token): bool

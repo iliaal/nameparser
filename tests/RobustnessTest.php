@@ -545,6 +545,26 @@ class RobustnessTest extends TestCase
         }
     }
 
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function edgeFormatCharacterProvider(): array
+    {
+        return [
+            'trailing soft hyphen' => ["John Smith \u{00AD}"],
+            'leading zero-width space' => ["\u{200B} John Smith"],
+            'tag run at both edges' => ["\u{E0001} John Smith \u{E007F}"],
+        ];
+    }
+
+    #[DataProvider('edgeFormatCharacterProvider')]
+    public function testEdgeFormatCharactersLeaveNoEdgeSpace(string $input): void
+    {
+        foreach ([new Parser(), (new Parser())->setWhitespace('')] as $parser) {
+            $this->assertSame('John Smith', $parser->parse($input)->getSource());
+        }
+    }
+
     public function testVariationSelectorsSurviveFormatStripping(): void
     {
         $name = (new Parser())->parse("葛\u{E0100}飾 北斎");

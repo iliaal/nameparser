@@ -168,13 +168,13 @@ class Confidence
         $normalized = str_replace("\x00", '', $normalized);
 
         if ($whitespace === '') {
-            return Text::stripControlChars($normalized, true);
+            return trim(Text::stripControlChars($normalized, true), ' ');
         }
 
         $pattern = '/[' . preg_quote($whitespace, '/') . ']+/u';
         $normalized = preg_replace($pattern, ' ', $normalized) ?? $normalized;
 
-        return Text::stripControlChars(trim($normalized));
+        return trim(Text::stripControlChars(trim($normalized)));
     }
 
     /**

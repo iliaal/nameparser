@@ -85,6 +85,15 @@ class ParserIntegrityRemediationTest extends TestCase
         $this->assertSame('Smith', $name->getLastname());
     }
 
+    public function testFormatCharacterNicknameDelimitersAreIgnored(): void
+    {
+        $this->assertSame(['(' => ')'], Text::sanitizeNicknameDelimiters([
+            "\u{00AD}" => "\u{00AD}",
+            "\u{200B}" => ')',
+            '(' => ')',
+        ]));
+    }
+
     public function testInvalidUtf8IsScrubbedDeterministically(): void
     {
         $name = (new Parser())->parse("John\xFFSmith");
