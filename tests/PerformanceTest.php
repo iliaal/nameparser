@@ -19,6 +19,9 @@ class PerformanceTest extends TestCase
     // A 4x size step costs 4x under linear scaling and 16x under quadratic; allow 2x noise headroom.
     private const float MAX_QUADRUPLED_SCALING_RATIO = 8.0;
 
+    // Host load only ever adds CPU time, so the fastest of several samples tracks the real cost.
+    private const int FASTEST_OF_SAMPLES = 5;
+
     private const int SCALING_SAMPLES = 3;
 
     // An absolute floor catches uniformly slow but linear code. The 2000 names/s
@@ -97,6 +100,7 @@ class PerformanceTest extends TestCase
             8000,
             32000,
             self::MAX_QUADRUPLED_SCALING_RATIO,
+            true,
         );
     }
 
@@ -119,7 +123,7 @@ class PerformanceTest extends TestCase
         $measure(32000);
         $smallSamples = [];
         $largeSamples = [];
-        for ($sample = 0; $sample < self::SCALING_SAMPLES; ++$sample) {
+        for ($sample = 0; $sample < self::FASTEST_OF_SAMPLES; ++$sample) {
             if ($sample % 2 === 0) {
                 $smallSamples[] = $measure(8000);
                 $largeSamples[] = $measure(32000);
@@ -129,8 +133,8 @@ class PerformanceTest extends TestCase
             }
         }
 
-        $small = $this->median($smallSamples);
-        $large = $this->median($largeSamples);
+        $small = min($smallSamples);
+        $large = min($largeSamples);
 
         $this->assertLessThan(self::MAX_SECONDS, $large);
         $this->assertLessThan(($small * self::MAX_QUADRUPLED_SCALING_RATIO) + 0.005, $large);
@@ -435,6 +439,7 @@ class PerformanceTest extends TestCase
         int $smallSize = 16000,
         int $largeSize = 32000,
         float $maxRatio = self::MAX_SCALING_RATIO,
+        bool $fastest = false,
     ): void {
         $smallInput = $input($smallSize);
         $largeInput = $input($largeSize);
@@ -443,7 +448,8 @@ class PerformanceTest extends TestCase
 
         $smallSamples = [];
         $largeSamples = [];
-        for ($sample = 0; $sample < self::SCALING_SAMPLES; $sample++) {
+        $samples = $fastest ? self::FASTEST_OF_SAMPLES : self::SCALING_SAMPLES;
+        for ($sample = 0; $sample < $samples; $sample++) {
             if ($sample % 2 === 0) {
                 $smallSamples[] = $this->parseCpuSeconds($smallInput, $surnameFirst);
                 $largeSamples[] = $this->parseCpuSeconds($largeInput, $surnameFirst);
@@ -453,8 +459,8 @@ class PerformanceTest extends TestCase
             }
         }
 
-        $small = $this->median($smallSamples);
-        $large = $this->median($largeSamples);
+        $small = $fastest ? min($smallSamples) : $this->median($smallSamples);
+        $large = $fastest ? min($largeSamples) : $this->median($largeSamples);
 
         $this->assertLessThan(self::MAX_SECONDS, $large);
         $this->assertLessThan(
