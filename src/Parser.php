@@ -805,7 +805,7 @@ class Parser
             return trim(Text::stripControlChars(trim($name)));
         }
 
-        return trim(Text::stripControlChars($name, true), ' ');
+        return trim(Text::stripControlChars($name, true));
     }
 
     private function normalizePattern(string $whitespace): string

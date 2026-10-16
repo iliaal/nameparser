@@ -554,6 +554,7 @@ class RobustnessTest extends TestCase
             'trailing soft hyphen' => ["John Smith \u{00AD}"],
             'leading zero-width space' => ["\u{200B} John Smith"],
             'tag run at both edges' => ["\u{E0001} John Smith \u{E007F}"],
+            'format character shielding edge tabs' => ["\u{200B}\tJohn Smith\t\u{200B}"],
         ];
     }
 

@@ -168,7 +168,7 @@ class Confidence
         $normalized = str_replace("\x00", '', $normalized);
 
         if ($whitespace === '') {
-            return trim(Text::stripControlChars($normalized, true), ' ');
+            return trim(Text::stripControlChars($normalized, true));
         }
 
         $pattern = '/[' . preg_quote($whitespace, '/') . ']+/u';
