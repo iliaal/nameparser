@@ -98,13 +98,21 @@ class NameConfidenceTest extends TestCase
         $this->assertFalse($name->getConfidence()['ambiguous']);
     }
 
-    public function testParsedConfidenceHandlesInvalidUtf8WhitespaceWithoutWarnings(): void
+    public function testInvalidUtf8WhitespaceNeverReachesParsedConfidence(): void
     {
-        $name = (new Parser())
-            ->setWhitespace("\xFF")
-            ->parse('Lord Ashcroft');
+        try {
+            (new Parser())->setWhitespace("\xFF");
+            $this->fail('setWhitespace accepted invalid UTF-8');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertSame('Whitespace characters must be valid UTF-8.', $e->getMessage());
+        }
 
-        $this->assertTrue($name->getConfidence()['ambiguous']);
+        $name = (new Name(confidenceWhitespace: "\xFF"))->setSource('Lord Ashcroft');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Whitespace characters must be valid UTF-8.');
+
+        $name->getConfidence();
     }
 
     public function testParsedConfidenceIgnoresShieldedCommasAtTheTokenLimit(): void

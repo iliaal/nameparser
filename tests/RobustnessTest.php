@@ -160,14 +160,117 @@ class RobustnessTest extends TestCase
         $this->assertTrue(mb_check_encoding($name->getLastname(), 'UTF-8'));
     }
 
-    public function testInvalidUtf8WhitespaceFallsBackToBytewiseWithoutWarnings(): void
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function invalidUtf8WhitespaceProvider(): array
     {
-        // Invalid UTF-8 whitespace cannot compile under /u; retain bytewise matching.
-        $parser = (new Parser())->setWhitespace("\xFF");
-        $name = $parser->parse("John\xFFSmith");
+        return [
+            'lone 0xFF' => ["\xFF"],
+            'raw NBSP byte after space' => [" \xA0"],
+            'raw NBSP byte before space' => ["\xA0 "],
+            'truncated multibyte' => [" \t\xC3"],
+        ];
+    }
 
+    #[DataProvider('invalidUtf8WhitespaceProvider')]
+    public function testInvalidUtf8WhitespaceIsRejectedWithoutWarnings(string $whitespace): void
+    {
+        $parser = new Parser();
+
+        try {
+            $parser->setWhitespace($whitespace);
+            $this->fail('setWhitespace accepted ' . bin2hex($whitespace));
+        } catch (\InvalidArgumentException $e) {
+            $this->assertSame('Whitespace characters must be valid UTF-8.', $e->getMessage());
+        }
+
+        $this->assertSame(" \r\n\t", $parser->getWhitespace());
+        $name = $parser->parse('John Smith');
         $this->assertSame('John', $name->getFirstname());
         $this->assertSame('Smith', $name->getLastname());
+    }
+
+    public function testSubclassInvalidWhitespaceIsRejectedAtParse(): void
+    {
+        $property = new class extends Parser {
+            protected string $whitespace = " \xA0";
+        };
+        $getter = new class extends Parser {
+            public function getWhitespace(): string
+            {
+                return " \xA0";
+            }
+        };
+
+        foreach ([$property, $getter] as $parser) {
+            try {
+                $parser->parse("Andr\u{00E0}\x1B Smith");
+                $this->fail('parse accepted invalid UTF-8 whitespace');
+            } catch (\InvalidArgumentException $e) {
+                $this->assertSame('Whitespace characters must be valid UTF-8.', $e->getMessage());
+            }
+        }
+    }
+
+    public function testNormalizeScrubsInsteadOfReturningUnstrippedInvalidInput(): void
+    {
+        $parser = new class extends Parser {
+            public function normalizeRaw(string $name): string
+            {
+                return $this->normalize($name);
+            }
+        };
+
+        $this->assertSame('John ? Smith', $parser->normalizeRaw("John \x1B\xFF\x07 Sm\u{202E}ith"));
+
+        $parser->setWhitespace('');
+        $this->assertSame("Jo\tJohn ?", $parser->normalizeRaw("Jo\tJohn \x1B\xFF\u{202E}"));
+    }
+
+    /**
+     * @return array<string, array{?string, string, string, string, string}>
+     */
+    public static function controlsUnderAcceptedWhitespaceProvider(): array
+    {
+        // Whitespace, input, expected firstname, lastname, source.
+        return [
+            'default' => [null, "\x1BAndr\u{00E0}\x07 Sm\u{202E}\u{00E0}th", "Andr\u{00E0}", "Sm\u{00E0}th", "Andr\u{00E0} Sm\u{00E0}th"],
+            'default, invalid byte' => [null, "\x1BAndr\u{00E0}\x07 Sm\u{202E}\u{00E0}th \xFF", "Andr\u{00E0}", "Sm\u{00E0}th", "Andr\u{00E0} Sm\u{00E0}th ?"],
+            'NBSP set' => [" \u{00A0}", "\x1BAndr\u{00E0}\x07\u{00A0}Sm\u{202E}\u{00E0}th", "Andr\u{00E0}", "Sm\u{00E0}th", "Andr\u{00E0} Sm\u{00E0}th"],
+            'NBSP set, invalid byte' => [" \u{00A0}", "\x1BAndr\u{00E0}\x07\u{00A0}Sm\u{202E}\u{00E0}th\u{00A0}\xFF", "Andr\u{00E0}", "Sm\u{00E0}th", "Andr\u{00E0} Sm\u{00E0}th ?"],
+            'NBSP set, comma form' => [" \u{00A0}", "Sm\u{202E}\u{00E0}th,\u{00A0}\x1BAndr\u{00E0}\x07", "Andr\u{00E0}", "Sm\u{00E0}th", "Sm\u{00E0}th, Andr\u{00E0}"],
+        ];
+    }
+
+    #[DataProvider('controlsUnderAcceptedWhitespaceProvider')]
+    public function testControlsNeverSurviveAcceptedWhitespace(
+        ?string $whitespace,
+        string $input,
+        string $first,
+        string $last,
+        string $source,
+    ): void {
+        $parser = new Parser();
+        if ($whitespace !== null) {
+            $parser->setWhitespace($whitespace);
+        }
+        $name = $parser->parse($input);
+
+        $this->assertSame($first, $name->getFirstname());
+        $this->assertSame($last, $name->getLastname());
+        $this->assertSame($source, $name->getSource());
+        $this->assertSame("{$first} {$last}", $name->getFullName());
+        $this->assertSame("{$first} {$last}", (string) $name);
+
+        $exports = array_merge(
+            [$name->getFirstname(), $name->getLastname(), $name->getFullName(), (string) $name, (string) $name->getSource()],
+            array_values($name->toArray()),
+        );
+        foreach ($exports as $value) {
+            $this->assertTrue(mb_check_encoding($value, 'UTF-8'), 'invalid UTF-8: ' . bin2hex($value));
+            $this->assertSame(0, preg_match('/[\p{Cc}\x{202A}-\x{202E}]/u', $value), 'control in ' . bin2hex($value));
+        }
     }
 
     /**

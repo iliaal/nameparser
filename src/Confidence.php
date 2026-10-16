@@ -24,13 +24,16 @@ class Confidence
      * Nickname delimiters and whitespace mirror the Parser configuration the
      * input was parsed with (Name::getConfidence() forwards the stored
      * values), so decoration mapping and comma splitting agree with the
-     * parse. Null uses the default configuration.
+     * parse. Null uses the default configuration. A whitespace set that is
+     * not valid UTF-8 is rejected, as Parser::setWhitespace() rejects it.
      *
      * @param  array<int|string, string>|null  $suffixes
      * @param  array<int|string, string>|null  $salutations
      * @param  list<string>|null  $tokens
      * @param  array<string, string>|null  $nicknameDelimiters
      * @return array{ambiguous: bool, notes: list<string>}
+     *
+     * @throws \InvalidArgumentException when the whitespace set is not valid UTF-8
      */
     public static function assess(
         string $original,
@@ -41,6 +44,9 @@ class Confidence
         ?string $whitespace = null,
     ): array {
         Text::assertInputByteBudget($original);
+        if ($whitespace !== null) {
+            Text::assertValidWhitespace($whitespace);
+        }
         $validUtf8 = mb_check_encoding($original, 'UTF-8');
         $normalized = self::normalize($original, $whitespace);
 
@@ -158,34 +164,17 @@ class Confidence
     {
         $whitespace ??= " \r\n\t";
 
-        // Parser scrubs invalid bytes only when its whitespace configuration
-        // is valid UTF-8; invalid configuration retains bytewise semantics.
-        if (mb_check_encoding($whitespace, 'UTF-8')) {
-            $original = mb_scrub($original, 'UTF-8');
-        }
-
-        $normalized = trim($original);
+        $normalized = trim(mb_scrub($original, 'UTF-8'));
         $normalized = str_replace("\x00", '', $normalized);
 
-        $preserveTab = $whitespace === '';
-        if ($whitespace !== '') {
-            $unicode = mb_check_encoding($normalized, 'UTF-8')
-                && mb_check_encoding($whitespace, 'UTF-8') ? 'u' : '';
-            $pattern = '/[' . preg_quote($whitespace, '/') . ']+/' . $unicode;
-            $normalized = preg_replace($pattern, ' ', $normalized) ?? $normalized;
-            $normalized = trim($normalized);
+        if ($whitespace === '') {
+            return Text::stripControlChars($normalized, true);
         }
 
-        $controlPattern = '/[\p{Cc}\x{061C}\x{180E}\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{206F}\x{FEFF}]/u';
-        if ($preserveTab) {
-            return preg_replace_callback(
-                $controlPattern,
-                static fn(array $matches): string => $matches[0] === "\t" ? "\t" : '',
-                $normalized,
-            ) ?? $normalized;
-        }
+        $pattern = '/[' . preg_quote($whitespace, '/') . ']+/u';
+        $normalized = preg_replace($pattern, ' ', $normalized) ?? $normalized;
 
-        return preg_replace($controlPattern, '', $normalized) ?? $normalized;
+        return Text::stripControlChars(trim($normalized));
     }
 
     /**
@@ -194,10 +183,6 @@ class Confidence
      */
     private static function tokenize(string $normalized, array $nicknameDelimiters): array
     {
-        if (! mb_check_encoding($normalized, 'UTF-8')) {
-            return self::tokenizeCommaSegments($normalized);
-        }
-
         if (! str_contains($normalized, ',')) {
             return self::tokenizeWords($normalized);
         }

@@ -248,15 +248,24 @@ class ConfidenceTest extends TestCase
         Confidence::assess(str_repeat('A ', self::MAX_INPUT_TOKENS) . "\xFF");
     }
 
-    public function testInvalidUtf8WhitespaceUsesBytewiseTokenizationWithoutWarnings(): void
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function invalidUtf8WhitespaceProvider(): array
     {
-        $result = Confidence::assess('Lord Ashcroft', whitespace: "\xFF");
+        return [
+            'lone 0xFF' => ["\xFF"],
+            'raw NBSP byte after space' => [" \xA0"],
+        ];
+    }
 
-        $this->assertTrue($result['ambiguous']);
-        $this->assertSame(
-            ["'Lord' could be a name or a salutation; nothing in the input decides it"],
-            $result['notes'],
-        );
+    #[DataProvider('invalidUtf8WhitespaceProvider')]
+    public function testInvalidUtf8WhitespaceIsRejectedWithoutWarnings(string $whitespace): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Whitespace characters must be valid UTF-8.');
+
+        Confidence::assess('Lord Ashcroft', whitespace: $whitespace);
     }
 
     public function testNulWhitespaceIsStrippedBeforeConfidenceTokenization(): void
@@ -349,10 +358,7 @@ class ConfidenceTest extends TestCase
     {
         $this->expectException(\LengthException::class);
 
-        Confidence::assess(
-            "Lord '" . str_repeat('A,', 70000) . "' \xFE",
-            whitespace: "\xFF",
-        );
+        Confidence::assess('Lord ' . str_repeat('A,', 70000) . " \xFE");
     }
 
     public function testLeadingSymmetricQuoteBoundaryMatchesParserConfidence(): void

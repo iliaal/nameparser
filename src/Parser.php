@@ -130,11 +130,10 @@ class Parser
      */
     public function parse(string $name): Name
     {
-        // Scrub invalid UTF-8 unless bytewise whitespace configuration
-        // requires preserving the original separator bytes.
-        if (mb_check_encoding($this->whitespace, 'UTF-8')) {
-            $name = mb_scrub($name, 'UTF-8');
-        }
+        // Subclasses can bypass setWhitespace() through the property or getter.
+        Text::assertValidWhitespace($this->getWhitespace());
+
+        $name = mb_scrub($name, 'UTF-8');
 
         $this->tokenAnalysisMemo = [];
 
@@ -778,7 +777,11 @@ class Parser
      * bidi reordering. Everything else passes through untouched (no NFKC:
      * "ﬁ" stays "ﬁ"). With an empty whitespace set, tab remains an intentional
      * separator exception; all other controls are still stripped. Whitespace
-     * collapsing only decides what becomes a space.
+     * collapsing only decides what becomes a space, and always matches whole
+     * code points: setWhitespace() and parse() reject a set that is not valid
+     * UTF-8. Invalid input bytes are scrubbed to "?" (parse() scrubs before
+     * calling this, and the strip scrubs again rather than ever returning an
+     * unstripped string), so the result is always valid UTF-8.
      */
     protected function normalize(string $name): string
     {
@@ -793,36 +796,17 @@ class Parser
             $name = preg_replace($this->normalizePattern($whitespace), ' ', $name) ?? $name;
 
             // Custom edge whitespace becomes spaces only after the first trim().
-            return $this->stripControlChars(trim($name));
+            return Text::stripControlChars(trim($name));
         }
 
-        return $this->stripControlChars($name, true);
-    }
-
-    private function stripControlChars(string $name, bool $preserveTab = false): string
-    {
-        if ($preserveTab) {
-            return preg_replace_callback(
-                '/[\p{Cc}\x{061C}\x{180E}\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{206F}\x{FEFF}]/u',
-                static fn(array $matches): string => $matches[0] === "\t" ? "\t" : '',
-                $name,
-            ) ?? $name;
-        }
-
-        return preg_replace(
-            '/[\p{Cc}\x{061C}\x{180E}\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{206F}\x{FEFF}]/u',
-            '',
-            $name,
-        ) ?? $name;
+        return Text::stripControlChars($name, true);
     }
 
     private function normalizePattern(string $whitespace): string
     {
         if ($this->normalizePattern === null || $this->normalizePatternKey !== $whitespace) {
             // Use /u to avoid matching bytes inside unrelated multibyte characters.
-            // Invalid UTF-8 whitespace sets retain bytewise semantics.
-            $unicode = mb_check_encoding($whitespace, 'UTF-8') ? 'u' : '';
-            $this->normalizePattern = '/[' . preg_quote($whitespace, '/') . ']+/' . $unicode;
+            $this->normalizePattern = '/[' . preg_quote($whitespace, '/') . ']+/u';
             $this->normalizePatternKey = $whitespace;
         }
 
@@ -984,9 +968,13 @@ class Parser
 
     /**
      * set the string of characters that are supposed to be treated as whitespace
+     *
+     * @throws \InvalidArgumentException when the set is not valid UTF-8
      */
     public function setWhitespace(string $whitespace): Parser
     {
+        Text::assertValidWhitespace($whitespace);
+
         $this->whitespace = $whitespace;
         $this->invalidateMapperCache();
 

@@ -10,6 +10,7 @@ use Iliaal\NameParser\Mapper\NicknameMapper;
 use Iliaal\NameParser\Mapper\SalutationMapper;
 use Iliaal\NameParser\Mapper\SuffixMapper;
 use Iliaal\NameParser\Parser;
+use Iliaal\NameParser\StructuralCommaSplitter;
 use Iliaal\NameParser\Text;
 use Iliaal\NameParser\TokenCredentialClass;
 use PHPUnit\Framework\TestCase;
@@ -40,12 +41,11 @@ class ParserIntegrityRemediationTest extends TestCase
         $this->assertSame('Abab', $name->getFirstname());
     }
 
-    public function testInvalidUtf8WhitespaceKeepsBytewiseContract(): void
+    public function testInvalidUtf8WhitespaceIsRejected(): void
     {
-        $name = (new Parser())->setWhitespace("\xFF")->parse("John\xFFSmith");
+        $this->expectException(\InvalidArgumentException::class);
 
-        $this->assertSame('John', $name->getFirstname());
-        $this->assertSame('Smith', $name->getLastname());
+        (new Parser())->setWhitespace("\xFF");
     }
 
     public function testMaskingShieldsNicknameCommas(): void
@@ -175,11 +175,16 @@ class ParserIntegrityRemediationTest extends TestCase
 
     public function testInvalidUtf8CommaRowSplitsDeterministically(): void
     {
-        $name = (new Parser())->setWhitespace("\xFF")->parse("John\xFF(Bob, Jr");
+        $this->assertSame(
+            ["John\xFF(Bob", ' Jr'],
+            StructuralCommaSplitter::split("John\xFF(Bob, Jr", ['(' => ')']),
+        );
 
-        $this->assertSame('John', $name->getFirstname());
-        $this->assertSame('Bob', $name->getLastname());
-        $this->assertSame('Jr', $name->getSuffix());
+        $name = (new Parser())->parse("John\xFF(Bob, Jr");
+
+        $this->assertSame('John?(Bob, Jr', $name->getSource());
+        $this->assertSame('Jr', $name->getFirstname());
+        $this->assertSame('John?(Bob', $name->getLastname());
     }
 
     public function testNulBytesAreStripped(): void

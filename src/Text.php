@@ -53,6 +53,42 @@ final class Text
         }
     }
 
+    public static function assertValidWhitespace(string $whitespace): void
+    {
+        if (! mb_check_encoding($whitespace, 'UTF-8')) {
+            throw new \InvalidArgumentException('Whitespace characters must be valid UTF-8.');
+        }
+    }
+
+    /**
+     * Removes Cc controls and the bidi/format characters that reorder or
+     * hollow out display text; invalid UTF-8 is scrubbed first so the /u
+     * pass cannot fail and hand back the unstripped string.
+     */
+    public static function stripControlChars(string $text, bool $preserveTab = false): string
+    {
+        if (! mb_check_encoding($text, 'UTF-8')) {
+            $text = mb_scrub($text, 'UTF-8');
+        }
+
+        $pattern = '/[\p{Cc}\x{061C}\x{180E}\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{206F}\x{FEFF}]/u';
+        $stripped = $preserveTab
+            ? preg_replace_callback(
+                $pattern,
+                static fn(array $matches): string => $matches[0] === "\t" ? "\t" : '',
+                $text,
+            )
+            : preg_replace($pattern, '', $text);
+
+        if ($stripped === null) {
+            throw new \UnexpectedValueException(
+                'Control-character stripping failed: ' . preg_last_error_msg(),
+            );
+        }
+
+        return $stripped;
+    }
+
     public static function assertInputTokenCount(int $count): void
     {
         if ($count > self::MAX_INPUT_TOKENS) {
