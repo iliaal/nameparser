@@ -457,10 +457,11 @@ class SuffixMapper extends AbstractMapper
 
     /**
      * Record earlier unmatched openers per delimiter and position for O(1) tail checks.
-     * Return an empty table when no token can open a span.
+     * Each pair whose opener appears gets one byte per part ("\1" while a span is open);
+     * pairs that never open are omitted. Return an empty table when no token can open a span.
      *
      * @param  PartArray  $parts
-     * @return list<list<bool>>
+     * @return array<int, string>
      */
     private function buildSpanOpenerPrefix(array $parts): array
     {
@@ -468,35 +469,41 @@ class SuffixMapper extends AbstractMapper
             return [];
         }
 
-        $hasDelimiterByte = false;
+        /** @var array<int, string> $candidates */
+        $candidates = [];
 
-        foreach ($parts as $part) {
+        foreach ($parts as $index => $part) {
             if (is_string($part) && strpbrk($part, $this->spanDelimiterBytes) !== false) {
-                $hasDelimiterByte = true;
-
-                break;
+                $candidates[$index] = $part;
             }
         }
 
-        if (! $hasDelimiterByte) {
+        if ($candidates === []) {
             return [];
         }
 
+        $count = count($parts);
         $prefix = [];
+        $pair = -1;
 
         foreach ($this->spanDelimiters as $open => $close) {
+            $pair++;
             $open = (string) $open;
             $symmetric = $open === $close;
             $seen = false;
+            $opened = false;
             $depth = 0;
-            $column = [];
+            $column = '';
+            $filled = 0;
 
-            foreach ($parts as $index => $part) {
-                $column[] = $seen;
-
-                if (! is_string($part)) {
+            foreach ($candidates as $index => $part) {
+                // A token without this pair's opener or closer leaves the span state unchanged.
+                if (! str_contains($part, $open) && ($symmetric || ! str_contains($part, $close))) {
                     continue;
                 }
+
+                $column .= str_repeat($seen ? "\1" : "\0", $index + 1 - $filled);
+                $filled = $index + 1;
 
                 if ($symmetric) {
                     $delta = self::symmetricBoundaryDelta($part, $open);
@@ -517,9 +524,15 @@ class SuffixMapper extends AbstractMapper
                     $depth = max(0, $depth + substr_count($part, $open) - substr_count($part, $close));
                     $seen = $depth > 0;
                 }
+
+                $opened = $opened || $seen;
             }
 
-            $prefix[] = $column;
+            if (! $opened) {
+                continue;
+            }
+
+            $prefix[$pair] = $column . str_repeat($seen ? "\1" : "\0", $count - $filled);
         }
 
         return $prefix;
@@ -530,7 +543,7 @@ class SuffixMapper extends AbstractMapper
      * Self-contained "(MD)" and stray "MD)" remain eligible suffixes.
      *
      * @param  PartArray  $parts
-     * @param  list<list<bool>>  $spanOpenerPrefix
+     * @param  array<int, string>  $spanOpenerPrefix
      */
     private function isSpanTailToken(array $parts, int $index, array $spanOpenerPrefix = []): bool
     {
@@ -561,7 +574,7 @@ class SuffixMapper extends AbstractMapper
                 continue;
             }
 
-            if ($spanOpenerPrefix[$pair][$index] ?? false) {
+            if (($spanOpenerPrefix[$pair][$index] ?? "\0") === "\1") {
                 return true;
             }
 

@@ -24,6 +24,13 @@ class PerformanceTest extends TestCase
 
     private const int MAX_INPUT_TOKENS = 65536;
 
+    private const array DELIMITER_PAIRS = [
+        '(' => ')', '[' => ']', '{' => '}', '<' => '>', '"' => '"', "'" => "'", '«' => '»', '‹' => '›',
+        '„' => '“', '“' => '”', '‘' => '’', '【' => '】', '〔' => '〕', '《' => '》', '〈' => '〉', '「' => '」',
+        '『' => '』', '〖' => '〗', '〘' => '〙', '〚' => '〛', '⟨' => '⟩', '⟪' => '⟫', '⦃' => '⦄', '⦅' => '⦆',
+        '⦇' => '⦈', '⦉' => '⦊', '⦋' => '⦌', '⦍' => '⦎', '⦏' => '⦐', '⦑' => '⦒', '⦓' => '⦔', '⦕' => '⦖',
+    ];
+
     public function testCombinedInitialExpansionRemainsLinearAtBatchScale(): void
     {
         $this->assertLinearScaling(
@@ -249,6 +256,71 @@ class PerformanceTest extends TestCase
             $result = Iliaal\NameParser\Confidence::assess($input);
 
             exit($result['ambiguous'] ? 0 : 1);
+            PHP;
+        $this->assertConstrainedPhpSucceeds($code);
+    }
+
+    public function testMaximumDelimiterPairsAtTokenLimitUseBoundedMemory(): void
+    {
+        $this->assertDelimiterPairsParseWithinConstrainedMemory(
+            32,
+            "'( ' . str_repeat('a ', 65534) . 'MD'",
+            "\$name->getSuffix() === 'MD'",
+        );
+    }
+
+    public function testMaximumOpenDelimiterPairsAtTokenLimitKeepSpanTailsWithinBoundedMemory(): void
+    {
+        $this->assertDelimiterPairsParseWithinConstrainedMemory(
+            32,
+            "implode(' ', array_keys(\$pairs)) . ' ' . str_repeat('a ', 65536 - 33) . 'MD]'",
+            "\$name->getSuffix() === '' && \$name->getLastname() === 'Md]'",
+        );
+    }
+
+    public function testSingleDelimiterPairAtTokenLimitUsesBoundedMemory(): void
+    {
+        $this->assertDelimiterPairsParseWithinConstrainedMemory(
+            1,
+            "'( ' . str_repeat('a ', 65534) . 'MD'",
+            "\$name->getSuffix() === 'MD'",
+        );
+    }
+
+    public function testDelimiterFreeInputAtTokenLimitUsesBoundedMemory(): void
+    {
+        $this->assertDelimiterPairsParseWithinConstrainedMemory(
+            32,
+            "str_repeat('a ', 65535) . 'MD'",
+            "\$name->getSuffix() === 'MD'",
+        );
+    }
+
+    public function testMaximumDelimiterPairsStillRejectInputOverTokenBudget(): void
+    {
+        $parser = new Parser();
+        $parser->setNicknameDelimiters(array_slice(self::DELIMITER_PAIRS, 0, 32, true));
+
+        $this->expectException(\LengthException::class);
+
+        $parser->parse('( ' . str_repeat('a ', self::MAX_INPUT_TOKENS - 1) . 'MD');
+    }
+
+    private function assertDelimiterPairsParseWithinConstrainedMemory(
+        int $pairCount,
+        string $inputExpression,
+        string $successExpression,
+    ): void {
+        $pairs = var_export(array_slice(self::DELIMITER_PAIRS, 0, $pairCount, true), true);
+        $code = <<<PHP
+            require 'vendor/autoload.php';
+
+            \$pairs = {$pairs};
+            \$parser = new Iliaal\\NameParser\\Parser();
+            \$parser->setNicknameDelimiters(\$pairs);
+            \$name = \$parser->parse({$inputExpression});
+
+            exit({$successExpression} ? 0 : 1);
             PHP;
         $this->assertConstrainedPhpSucceeds($code);
     }
