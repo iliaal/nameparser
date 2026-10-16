@@ -107,12 +107,28 @@ class NameConfidenceTest extends TestCase
             $this->assertSame('Whitespace characters must be valid UTF-8.', $e->getMessage());
         }
 
-        $name = (new Name(confidenceWhitespace: "\xFF"))->setSource('Lord Ashcroft');
+        $name = (new Parser())->setWhitespace(" \u{00A0}")->parse("Lord\u{00A0}Ashcroft");
 
+        try {
+            $name->setConfidenceWhitespace("\xFF");
+            $this->fail('setConfidenceWhitespace accepted invalid UTF-8');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertSame('Whitespace characters must be valid UTF-8.', $e->getMessage());
+        }
+
+        $this->assertSame(" \u{00A0}", $name->getConfidenceWhitespace());
+        $this->assertSame(
+            ["'Lord' could be a name or a salutation; nothing in the input decides it"],
+            $name->getConfidence()['notes'],
+        );
+    }
+
+    public function testNameConstructorRejectsInvalidUtf8Whitespace(): void
+    {
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('Whitespace characters must be valid UTF-8.');
 
-        $name->getConfidence();
+        new Name(confidenceWhitespace: " \xA0");
     }
 
     public function testParsedConfidenceIgnoresShieldedCommasAtTheTokenLimit(): void

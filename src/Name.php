@@ -72,6 +72,8 @@ class Name
      * @param  array<int|string, string>|null  $confidenceSuffixes
      * @param  array<int|string, string>|null  $confidenceSalutations
      * @param  array<string, string>|null  $confidenceNicknameDelimiters
+     *
+     * @throws \InvalidArgumentException when the whitespace set is not valid UTF-8
      */
     public function __construct(
         ?array $parts = null,
@@ -80,6 +82,10 @@ class Name
         ?array $confidenceNicknameDelimiters = null,
         ?string $confidenceWhitespace = null,
     ) {
+        if ($confidenceWhitespace !== null) {
+            Text::assertValidWhitespace($confidenceWhitespace);
+        }
+
         $this->confidenceSuffixes = $confidenceSuffixes;
         $this->confidenceSalutations = $confidenceSalutations;
         $this->confidenceNicknameDelimiters = $confidenceNicknameDelimiters;
@@ -176,9 +182,15 @@ class Name
      * exactly like the parse did
      *
      * @return $this
+     *
+     * @throws \InvalidArgumentException when the set is not valid UTF-8
      */
     public function setConfidenceWhitespace(?string $whitespace): Name
     {
+        if ($whitespace !== null) {
+            Text::assertValidWhitespace($whitespace);
+        }
+
         $this->confidenceWhitespace = $whitespace;
 
         return $this;

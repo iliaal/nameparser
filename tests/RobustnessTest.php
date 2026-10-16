@@ -228,6 +228,21 @@ class RobustnessTest extends TestCase
         $this->assertSame("Jo\tJohn ?", $parser->normalizeRaw("Jo\tJohn \x1B\xFF\u{202E}"));
     }
 
+    public function testDirectNormalizeCollapsesLikeParseOnInvalidInput(): void
+    {
+        $parser = new class extends Parser {
+            public function normalizeRaw(string $name): string
+            {
+                return $this->normalize($name);
+            }
+        };
+        $parser->setWhitespace(" \u{00A0}");
+        $input = "John\u{00A0}Smith\xFF\u{00A0}\x00Jr";
+
+        $this->assertSame('John Smith? Jr', $parser->normalizeRaw($input));
+        $this->assertSame('John Smith? Jr', $parser->parse($input)->getSource());
+    }
+
     /**
      * @return array<string, array{?string, string, string, string, string}>
      */

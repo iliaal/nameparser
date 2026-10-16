@@ -779,17 +779,22 @@ class Parser
      * separator exception; all other controls are still stripped. Whitespace
      * collapsing only decides what becomes a space, and always matches whole
      * code points: setWhitespace() and parse() reject a set that is not valid
-     * UTF-8. Invalid input bytes are scrubbed to "?" (parse() scrubs before
-     * calling this, and the strip scrubs again rather than ever returning an
-     * unstripped string), so the result is always valid UTF-8.
+     * UTF-8. Invalid input bytes are scrubbed to "?" before collapsing, and
+     * the control strip never returns an unstripped string, so the result is
+     * always valid UTF-8.
      */
     protected function normalize(string $name): string
     {
         $whitespace = $this->getWhitespace();
 
+        // A direct call can carry bytes parse() would have scrubbed; /u collapse needs valid UTF-8.
+        if (! mb_check_encoding($name, 'UTF-8')) {
+            $name = mb_scrub($name, 'UTF-8');
+        }
+
         $name = trim($name);
 
-        // Strip NUL bytewise: it is the comma placeholder, and /u rejects invalid UTF-8.
+        // Strip NUL bytewise: it is the comma placeholder.
         $name = str_replace("\x00", '', $name);
 
         if ($whitespace !== '') {
