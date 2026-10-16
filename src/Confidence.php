@@ -7,6 +7,7 @@ use Iliaal\NameParser\Mapper\AbstractMapper;
 use Iliaal\NameParser\Mapper\NicknameMapper;
 use Iliaal\NameParser\Mapper\SalutationMapper;
 use Iliaal\NameParser\Mapper\SuffixMapper;
+use Iliaal\NameParser\Part\Nickname;
 use Iliaal\NameParser\Part\Salutation;
 
 /**
@@ -494,6 +495,20 @@ class Confidence
     }
 
     /**
+     * @param  array<int, \Iliaal\NameParser\Part\AbstractPart|string>  $parts
+     */
+    private static function hasNicknamePart(array $parts): bool
+    {
+        foreach ($parts as $part) {
+            if ($part instanceof Nickname) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * A comma decides name order only when names occur on both sides.
      * Map each segment once to keep delimiter-heavy input linear.
      *
@@ -519,7 +534,10 @@ class Confidence
         $lastNameBearing = null;
         foreach ($segments as $index => $segment) {
             $parts = $suffixMapper->map($nicknameMapper->map(self::tokenizeWords($segment)));
-            if (self::rawNameTokens($parts) !== []) {
+            // The surname segment parse promotes nicknames to Lastname when no
+            // raw name remains ('"Lord", Smith' binds surname Lord).
+            if (self::rawNameTokens($parts) !== []
+                || ($index === 0 && self::hasNicknamePart($parts))) {
                 $firstNameBearing ??= $index;
                 $lastNameBearing = $index;
             }

@@ -206,6 +206,10 @@ class ConfidenceTest extends TestCase
             'unambiguous title' => ['Dr. Ashcroft V'],
             'comma form' => ['Lord, Jack'],
             'span opened by wrapped title' => ['(Lord Bob) Ashcroft'],
+            'double-quoted comma surname' => ['"Lord", Smith'],
+            'single-quoted comma surname' => ["'Lord', Smith"],
+            'parenthesized comma surname' => ['(Lord), Smith'],
+            'wrapped comma surname run' => ['(Lord) (Bob), Smith'],
         ];
     }
 

@@ -152,6 +152,29 @@ class NameConfidenceTest extends TestCase
         $this->assertFalse($name->getConfidence()['ambiguous']);
     }
 
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function wrappedCommaSurnameProvider(): array
+    {
+        return [
+            'double-quoted' => ['"Lord", Smith'],
+            'single-quoted' => ["'Lord', Smith"],
+            'parenthesized' => ['(Lord), Smith'],
+        ];
+    }
+
+    #[DataProvider('wrappedCommaSurnameProvider')]
+    public function testParsedWrappedCommaSurnameStaysUnflagged(string $input): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame('Lord', $name->getLastname());
+        $this->assertSame('Smith', $name->getFirstname());
+        $this->assertSame('', $name->getSalutation());
+        $this->assertFalse($name->getConfidence()['ambiguous'], "expected '$input' to stay unflagged");
+    }
+
     public function testParsedConfidenceUsesConfiguredSalutations(): void
     {
         $name = (new Parser([new German()]))->parse('Lord Ashcroft');
