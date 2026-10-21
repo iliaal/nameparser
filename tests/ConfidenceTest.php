@@ -306,6 +306,45 @@ class ConfidenceTest extends TestCase
         );
     }
 
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function numericNicknameDelimiterProvider(): array
+    {
+        $cases = [];
+        for ($digit = 0; $digit <= 9; ++$digit) {
+            $cases['digit ' . $digit] = [(string) $digit];
+        }
+
+        return $cases;
+    }
+
+    #[DataProvider('numericNicknameDelimiterProvider')]
+    public function testNumericNicknameDelimitersShieldCommas(string $delimiter): void
+    {
+        $delimiters = [$delimiter => $delimiter];
+        $input = 'John ' . $delimiter . 'foo,do,bar' . $delimiter . ' Smith';
+        $name = (new Parser())->setNicknameDelimiters($delimiters)->parse($input);
+
+        $this->assertSame('Foo,Do,Bar', $name->getNickname());
+        $this->assertSame(['ambiguous' => false, 'notes' => []], $name->getConfidence());
+        $this->assertSame(
+            $name->getConfidence(),
+            Confidence::assess($input, nicknameDelimiters: $delimiters),
+        );
+
+        // The comma after the closed nickname must remain structural.
+        $this->assertTrue(Confidence::assess(
+            $input . ', do',
+            nicknameDelimiters: $delimiters,
+        )['ambiguous']);
+        // An unmatched opener must not hide the lowercase credential.
+        $this->assertTrue(Confidence::assess(
+            'John ' . $delimiter . 'foo,do,bar Smith',
+            nicknameDelimiters: $delimiters,
+        )['ambiguous']);
+    }
+
     public function testManyConfiguredDelimitersStayWithinMemoryBudget(): void
     {
         $input = 'X ' . str_repeat('a', (1024 * 1024) - 10) . ', Y';

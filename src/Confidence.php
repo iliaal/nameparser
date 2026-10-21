@@ -284,6 +284,7 @@ class Confidence
 
             $closerStart = $position - 1;
             foreach ($symmetric as $delimiter => $_) {
+                $delimiter = (string) $delimiter;
                 if ($closerStart < $tokenStart || $normalized[$closerStart] !== $delimiter) {
                     continue;
                 }
