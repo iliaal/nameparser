@@ -3,6 +3,7 @@
 namespace Iliaal\NameParser\Mapper;
 
 use Iliaal\NameParser\Part\AbstractPart;
+use Iliaal\NameParser\Part\GivenNamePart;
 use Iliaal\NameParser\Part\Ignored;
 use Iliaal\NameParser\Part\Lastname;
 use Iliaal\NameParser\Part\LastnamePrefix;
@@ -262,7 +263,22 @@ class LastnameMapper extends AbstractMapper
             return true;
         }
 
-        return $this->hasUnmappedPartsBefore($parts, $index);
+        if ($this->hasUnmappedPartsBefore($parts, $index)) {
+            return true;
+        }
+
+        // InitialMapper may already have mapped the only given-name evidence.
+        foreach ($parts as $k => $previous) {
+            if ($k === $index) {
+                break;
+            }
+
+            if ($previous instanceof GivenNamePart && $previous->normalize() !== '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     protected function isPrefix(string $word): bool
