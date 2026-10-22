@@ -367,9 +367,7 @@ Leading and trailing tabs are still trimmed. Every Unicode format character
 (category Cf) is stripped, including bidi controls, zero-width characters such
 as ZWJ and ZWNJ, the soft hyphen, and tag characters. The line and paragraph separators
 U+2028 and U+2029 become spaces. Invalid UTF-8 bytes are replaced with `?`.
-Variation selectors are kept, so ideographic variants in names survive. With
-`setWhitespace('')`, tab is kept in the text rather than stripped, but it does
-not split tokens.
+Variation selectors are kept, so ideographic variants in names survive.
 
 ### Ambiguous inputs
 
