@@ -115,6 +115,7 @@ final class StructuralCommaSplitter
         /** @var array<string, true> $symmetric */
         $symmetric = [];
         foreach ($delimiters as $open => $close) {
+            $open = (string) $open;
             if ($open === '' || $close === '') {
                 continue;
             }

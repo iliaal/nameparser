@@ -13,6 +13,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - Surname particles remain attached after given-name initials: `J. van Gogh` now keeps first name `J.` and surname `van Gogh`, rather than promoting `van` to the first name. This also applies with a salutation, nickname, or trailing credential. See the [parser regression cases](tests/InitialSurnamePrefixTest.php).
+- Numeric symmetric nickname delimiters now obey token boundaries when splitting names and shield nickname commas during standalone confidence assessment.
 
 ## [1.6.0] - 2026-10-16
 
