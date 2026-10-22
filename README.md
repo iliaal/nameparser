@@ -358,9 +358,14 @@ separator and change the parsed fields. For long rows with nickname commas,
 use only single-byte delimiter pairs, such as the defaults; their byte-level
 scan has no 4,096-byte cutoff. The overall input limits still apply.
 
-Normalization strips C0 and C1 control characters and every Unicode format
-character (category Cf): bidi controls, zero-width characters including ZWJ and
-ZWNJ, the soft hyphen, and tag characters. The line and paragraph separators
+Normalization first collapses the configured whitespace characters to spaces
+(the default includes tabs and line breaks), then strips remaining C0 and C1
+control characters. With `setWhitespace('')`, interior tabs are kept inside a
+token instead of separating names: `"John\tSmith"` stays one first-name token,
+whereas the default configuration gives first name `John` and surname `Smith`.
+Leading and trailing tabs are still trimmed. Every Unicode format character
+(category Cf) is stripped, including bidi controls, zero-width characters such
+as ZWJ and ZWNJ, the soft hyphen, and tag characters. The line and paragraph separators
 U+2028 and U+2029 become spaces. Invalid UTF-8 bytes are replaced with `?`.
 Variation selectors are kept, so ideographic variants in names survive. With
 `setWhitespace('')`, tab is kept in the text rather than stripped, but it does
