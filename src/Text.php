@@ -226,23 +226,25 @@ final class Text
      */
     public static function sanitizeNicknameDelimiters(array $delimiters): array
     {
-        return array_slice(
-            array_filter(
-                $delimiters,
-                static fn(string $close, string $open): bool => $open !== ''
-                    && $close !== ''
-                    && strlen($open) <= self::MAX_NICKNAME_DELIMITER_BYTES
-                    && strlen($close) <= self::MAX_NICKNAME_DELIMITER_BYTES
-                    && mb_check_encoding($open, 'UTF-8')
-                    && mb_check_encoding($close, 'UTF-8')
-                    && ! self::containsStructuralChar($open)
-                    && ! self::containsStructuralChar($close),
-                ARRAY_FILTER_USE_BOTH,
-            ),
-            0,
-            self::MAX_NICKNAME_DELIMITER_PAIRS,
-            true,
-        );
+        $isValid = static fn(string $close, string $open): bool => $open !== ''
+            && $close !== ''
+            && strlen($open) <= self::MAX_NICKNAME_DELIMITER_BYTES
+            && strlen($close) <= self::MAX_NICKNAME_DELIMITER_BYTES
+            && mb_check_encoding($open, 'UTF-8')
+            && mb_check_encoding($close, 'UTF-8')
+            && ! self::containsStructuralChar($open)
+            && ! self::containsStructuralChar($close);
+        $sanitized = [];
+
+        foreach ($delimiters as $open => $close) {
+            // Validate every entry as before, but retain only the bounded result.
+            if ($isValid($close, (string) $open)
+                && count($sanitized) < self::MAX_NICKNAME_DELIMITER_PAIRS) {
+                $sanitized[$open] = $close;
+            }
+        }
+
+        return $sanitized;
     }
 
     /**
