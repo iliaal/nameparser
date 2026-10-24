@@ -8,7 +8,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- Clarify whitespace normalization and the retained interior-tab exception for an empty whitespace set in the README.
+- Clarify whitespace normalization and the retained interior-tab exception for an empty whitespace set in the README. Keep the tab exception in one place without repeating the older caveat.
 
 ### Fixed
 
