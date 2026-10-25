@@ -61,4 +61,82 @@ class CombinedInitialTokenTest extends TestCase
             $this->assertSame('', $name->getMiddlename());
         }
     }
+    /**
+     * @return iterable<string, array{string, bool, string}>
+     */
+    public static function dottedParticleInitials(): iterable
+    {
+        yield 'western de collision' => ['John D.E. Smith', false, 'D E'];
+        yield 'western le collision' => ['John L.E. Smith', false, 'L E'];
+        yield 'optional final period' => ['John D.E Smith', false, 'D E'];
+        yield 'comma given segment' => ['Smith, John D.E.', false, 'D E'];
+        yield 'surname-first given segment' => ['Smith John D.E.', true, 'D E'];
+    }
+
+    #[DataProvider('dottedParticleInitials')]
+    public function testDottedInitialsDoNotBecomeSurnameParticles(string $input, bool $surnameFirst, string $initials): void
+    {
+        $parser = (new Parser())->setSurnameFirst($surnameFirst);
+        $parser->parse('SMITH, JO, MD');
+        $name = $parser->parse($input);
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame($initials, $name->getInitials());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('', $name->getLastnamePrefix());
+        $this->assertSame('', $name->getMiddlename());
+        $this->assertSame('John ' . $initials . ' Smith', $name->getFullName());
+    }
+
+    /**
+     * @return iterable<string, array{string, int}>
+     */
+    public static function preservedParticleTokens(): iterable
+    {
+        yield 'undotted uppercase' => ['DE', 2];
+        yield 'lowercase' => ['de', 2];
+        yield 'trailing period only' => ['DE.', 2];
+        yield 'repeated interior periods' => ['D..E.', 2];
+        yield 'lowercase dotted' => ['d.e.', 2];
+        yield 'single letter particle' => ['Ó.', 2];
+        yield 'combined initials disabled' => ['D.E.', 0];
+        yield 'combined initials below length' => ['D.E.', 1];
+    }
+
+    #[DataProvider('preservedParticleTokens')]
+    public function testParticleAndInitialLimitPoliciesRemainUnchanged(string $token, int $limit): void
+    {
+        $parts = ['John', $token, 'Smith'];
+        $mapper = new InitialMapper($limit, false, ['de' => 'de', 'ó' => 'Ó']);
+
+        $this->assertSame($parts, $mapper->map($parts));
+    }
+
+    public function testUniformUppercaseDottedParticleKeepsAmbiguityPolicy(): void
+    {
+        $parts = ['JOHN', 'D.E.', 'SMITH'];
+        $mapper = new InitialMapper(2, false, ['de' => 'de']);
+
+        $this->assertSame($parts, $mapper->map($parts));
+    }
+
+    public function testExplicitCustomDottedPrefixRemainsAPrefix(): void
+    {
+        $mapper = new InitialMapper(2, false, ['de' => 'D.E.']);
+        foreach (['D.E.', 'D.E', 'd.e.'] as $token) {
+            $parts = ['John', $token, 'Smith'];
+            $this->assertSame($parts, $mapper->map($parts));
+        }
+    }
+
+    public function testDottedUnicodeInitialsRetainCombiningMarks(): void
+    {
+        foreach (['U.Í.' => 'U Í', "U.I\u{0301}." => "U I\u{0301}"] as $token => $initials) {
+            $name = (new Parser())->parse('John ' . $token . ' Smith');
+
+            $this->assertSame($initials, $name->getInitials());
+            $this->assertSame('Smith', $name->getLastname());
+        }
+    }
+
 }

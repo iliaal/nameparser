@@ -15,6 +15,8 @@ class InitialMapper extends AbstractMapper
 {
     public const int MAX_COMBINED = 64;
 
+    private const string DOTTED_INITIALS = '/^(?:\p{L}\p{M}*\.)+\p{L}\p{M}*\.?$/u';
+
     private const int MAX_COMBINED_EXPANSION_PARTS = Text::MAX_INPUT_TOKENS * 2;
 
     private ?bool $uniformUpperOverride = null;
@@ -85,6 +87,7 @@ class InitialMapper extends AbstractMapper
             }
 
             // Leave particles such as Ó and DE for LastnameMapper, which runs later.
+            // Explicit dot-separated initials such as D.E. are not a particle.
             if ($this->isPrefix($part)) {
                 $mapped[] = $part;
 
@@ -137,8 +140,18 @@ class InitialMapper extends AbstractMapper
 
     private function isPrefix(string $part): bool
     {
-        return $this->prefixes !== []
-            && array_key_exists($this->getKey($part), $this->prefixes);
+        if ($this->prefixes === []) {
+            return false;
+        }
+
+        $key = $this->getKey($part);
+        if (! array_key_exists($key, $this->prefixes)) {
+            return false;
+        }
+
+        // A custom dictionary may explicitly define a dotted prefix too.
+        return preg_match(self::DOTTED_INITIALS, $part) !== 1
+            || preg_match(self::DOTTED_INITIALS, $this->prefixes[$key]) === 1;
     }
 
     protected function isInitial(string $part): bool
