@@ -929,7 +929,7 @@ class ParserTest extends TestCase
         $this->assertSame('John', $parser->parse('Smith, John')->getFirstname());
     }
 
-    public function testSetMappersDoesNotAffectSurnameFirst(): void
+    public function testSetMappersDoesNotAffectSuccessfulSurnameFirstSplit(): void
     {
         $parser = (new Parser())
             ->setMappers([new FirstnameMapper()])
@@ -941,6 +941,63 @@ class ParserTest extends TestCase
         $name = $parser->parse('Mao Zedong');
         $this->assertSame('Mao', $name->getLastname());
         $this->assertSame('Zedong', $name->getFirstname());
+    }
+
+    /**
+     * @return iterable<string, array{string, list<string>|null}>
+     */
+    public static function surnameFirstCustomMapperPaths(): iterable
+    {
+        yield 'empty input' => ['', []];
+        yield 'single name' => ['Kim', ['Kim']];
+        yield 'title only' => ['Dr.', ['Dr.']];
+        yield 'title and one name' => ['Dr. Kim', ['Dr.', 'Kim']];
+        yield 'stacked titles and one name' => ['Rev. Dr. Kim', ['Rev.', 'Dr.', 'Kim']];
+        yield 'successful split' => ['Kim Jong', null];
+        yield 'split after title' => ['Dr. Kim Jong', null];
+        yield 'explicit comma split' => ['Kim, Jong', null];
+        yield 'empty comma tail' => ['Kim,', null];
+        yield 'credential-only comma tail' => ['Kim, MD', null];
+        yield 'empty comma tail after title' => ['Dr. Kim,', null];
+        yield 'surname split with empty tail' => ['Kim Jong,', null];
+        yield 'surname split with credential tail' => ['Kim Jong, MD', null];
+    }
+
+    /**
+     * @param  list<string>|null  $expectedTokens
+     */
+    #[DataProvider('surnameFirstCustomMapperPaths')]
+    public function testSurnameFirstCustomMappersApplyOnlyToUnsplitInput(string $input, ?array $expectedTokens): void
+    {
+        $mapper = new class extends AbstractMapper {
+            /**
+             * @var list<array<int, \Iliaal\NameParser\Part\AbstractPart|string>>
+             */
+            public array $calls = [];
+
+            #[\Override]
+            public function map(array $parts): array
+            {
+                $this->calls[] = $parts;
+
+                return [new \Iliaal\NameParser\Part\Firstname('marker')];
+            }
+        };
+        $parser = (new Parser())->setMappers([$mapper])->setSurnameFirst(true);
+
+        // Exercise reuse after both a successful split and a fallback.
+        $parser->parse('Smith John');
+        $parser->parse('Kim');
+        $mapper->calls = [];
+        $name = $parser->parse($input);
+
+        $this->assertSame($expectedTokens === null ? [] : [$expectedTokens], $mapper->calls);
+        if ($expectedTokens === null) {
+            $this->assertNotSame('Marker', $name->getFirstname());
+        } else {
+            $this->assertSame('Marker', $name->getFirstname());
+            $this->assertSame('', $name->getLastname());
+        }
     }
 
     public function testPromotedDefaultMappersPickUpConfigChanges(): void
