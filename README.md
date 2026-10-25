@@ -366,7 +366,11 @@ whereas the default configuration gives first name `John` and surname `Smith`.
 Leading and trailing tabs are still trimmed. Every Unicode format character
 (category Cf) is stripped, including bidi controls, zero-width characters such
 as ZWJ and ZWNJ, the soft hyphen, and tag characters. The line and paragraph separators
-U+2028 and U+2029 become spaces. Invalid UTF-8 bytes are replaced with `?`.
+U+2028 and U+2029 become spaces. Invalid UTF-8 is scrubbed using the current
+process-wide `mb_substitute_character()` setting: normally `?`, a configured
+replacement code point, or removal with `'none'`. The parser does not change
+that setting. Replacement happens before tokenization, so the chosen setting
+can change name boundaries and parsed fields.
 Variation selectors are kept, so ideographic variants in names survive.
 
 ### Ambiguous inputs
