@@ -565,6 +565,7 @@ class Parser
             $this->getSalutations(),
             $this->getNicknameDelimiters(),
             $this->getWhitespace(),
+            $this->getConnectors(),
         );
     }
 

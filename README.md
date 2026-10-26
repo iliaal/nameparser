@@ -237,12 +237,12 @@ salutation collision: `"Lord Ashcroft MD"`, `"Lord Ashcroft (Bob)"`, and
 content on both sides, as in `"Lord, Ashcroft"`, resolves it.
 
 For a non-default language set, standalone `Confidence::assess($string)` still
-uses the English salutation scope and the full ambiguous-suffix table.
-`Name::getConfidence()` uses the parser's configured suffixes, salutations, and
+uses the English salutation/connector scope and the full ambiguous-suffix table.
+`Name::getConfidence()` uses the parser's configured suffixes, salutations, connectors, and
 token boundaries, including custom whitespace rules, so prefer it when you need
 confidence for an actual parse. Standalone callers can scope the
 dictionaries with `Confidence::assess($string, $parser->getSuffixes(),
-$parser->getSalutations())`; standalone tokenization still splits on whitespace
+$parser->getSalutations(), connectors: $parser->getConnectors())`; standalone tokenization still splits on whitespace
 and commas.
 
 Disambiguation keys off casing, so both all-caps legacy data and all-lowercase

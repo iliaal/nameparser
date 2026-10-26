@@ -66,12 +66,18 @@ class Name
     protected ?string $confidenceWhitespace = null;
 
     /**
+     * @var array<string, string>|null
+     */
+    protected ?array $confidenceConnectors = null;
+
+    /**
      * Raw strings remain in getParts(); getters and export() only read AbstractPart instances.
      *
      * @param  array<int, AbstractPart|string>|null  $parts
      * @param  array<int|string, string>|null  $confidenceSuffixes
      * @param  array<int|string, string>|null  $confidenceSalutations
      * @param  array<string, string>|null  $confidenceNicknameDelimiters
+     * @param  array<string, string>|null  $confidenceConnectors
      *
      * @throws \InvalidArgumentException when the whitespace set is not valid UTF-8
      */
@@ -81,6 +87,7 @@ class Name
         ?array $confidenceSalutations = null,
         ?array $confidenceNicknameDelimiters = null,
         ?string $confidenceWhitespace = null,
+        ?array $confidenceConnectors = null,
     ) {
         if ($confidenceWhitespace !== null) {
             Text::assertValidWhitespace($confidenceWhitespace);
@@ -90,6 +97,7 @@ class Name
         $this->confidenceSalutations = $confidenceSalutations;
         $this->confidenceNicknameDelimiters = $confidenceNicknameDelimiters;
         $this->confidenceWhitespace = $confidenceWhitespace;
+        $this->confidenceConnectors = $confidenceConnectors;
 
         if ($parts !== null) {
             $this->setParts($parts);
@@ -207,7 +215,7 @@ class Name
 
     /**
      * advisory confidence signal for this parse, derived from the input and
-     * nickname-delimiter/whitespace configuration the parser saw. Read-only;
+     * nickname-delimiter/whitespace/connector configuration the parser saw. Read-only;
      * parse() is unaffected.
      *
      * A manually constructed Name falls back to its rendered string with the
@@ -225,6 +233,7 @@ class Name
             $this->confidenceTokens,
             $this->confidenceNicknameDelimiters,
             $this->confidenceWhitespace,
+            $this->confidenceConnectors,
         );
     }
 
@@ -389,6 +398,7 @@ class Name
             $this->confidenceSalutations,
             $this->confidenceNicknameDelimiters,
             $this->confidenceWhitespace,
+            $this->confidenceConnectors,
         );
 
         // Preserve confidence provenance; manually constructed names keep their fallback.
