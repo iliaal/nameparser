@@ -15,6 +15,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Nickname-delimiter sanitization no longer copies every valid configured pair before keeping the first 32. Large configurations use bounded temporary storage while retaining validation of all entries.
 - Surname particles remain attached after given-name initials: `J. van Gogh` now keeps first name `J.` and surname `van Gogh`, rather than promoting `van` to the first name. This also applies with a salutation, nickname, or trailing credential. See the [parser regression cases](tests/InitialSurnamePrefixTest.php).
 - Numeric symmetric nickname delimiters now obey token boundaries when splitting names and shield nickname commas during standalone confidence assessment.
+- The input byte limit is checked before UTF-8 scrubbing as well as after it, so malformed input cannot bypass the limit when replacement removes or shortens invalid sequences.
 
 ## [1.6.0] - 2026-10-16
 

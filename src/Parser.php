@@ -133,6 +133,8 @@ class Parser
         // Subclasses can bypass setWhitespace() through the property or getter.
         Text::assertValidWhitespace($this->getWhitespace());
 
+        // Scrubbing can shrink malformed input; cap the original bytes as well.
+        $this->assertInputByteBudget($name);
         $name = mb_scrub($name, 'UTF-8');
 
         $this->tokenAnalysisMemo = [];
