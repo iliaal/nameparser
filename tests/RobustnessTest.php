@@ -293,7 +293,7 @@ class RobustnessTest extends TestCase
      */
     public static function invalidUtf8BodyProvider(): array
     {
-        // Input, expected firstname, expected lastname; mb_scrub uses '?' for invalid bytes.
+        // Input, expected firstname, expected lastname with substitution explicitly set to '?'.
         return [
             'invalid byte in comma given name' => ["Smith, J\xFFhn", 'J?Hn', 'Smith'],
             'invalid byte leading the given name' => ["J\xFFhn Smith", 'J?Hn', 'Smith'],
@@ -305,11 +305,57 @@ class RobustnessTest extends TestCase
     #[DataProvider('invalidUtf8BodyProvider')]
     public function testInvalidUtf8BodyIsScrubbedUnderDefaultConfig(string $input, string $first, string $last): void
     {
-        $name = (new Parser())->parse($input);
+        $substitute = mb_substitute_character();
+        mb_substitute_character(63);
 
-        $this->assertSame($first, $name->getFirstname(), 'firstname for ' . bin2hex($input));
-        $this->assertSame($last, $name->getLastname(), 'lastname for ' . bin2hex($input));
-        $this->assertTrue(mb_check_encoding($name->getFirstname() . $name->getLastname(), 'UTF-8'), 'scrubbed output is valid UTF-8');
+        try {
+            $name = (new Parser())->parse($input);
+
+            $this->assertSame($first, $name->getFirstname(), 'firstname for ' . bin2hex($input));
+            $this->assertSame($last, $name->getLastname(), 'lastname for ' . bin2hex($input));
+            $this->assertTrue(mb_check_encoding($name->getFirstname() . $name->getLastname(), 'UTF-8'), 'scrubbed output is valid UTF-8');
+        } finally {
+            mb_substitute_character($substitute);
+        }
+    }
+
+    /**
+     * @return array<string, array{int|string, string, string, string}>
+     */
+    public static function invalidUtf8SubstitutionProvider(): array
+    {
+        return [
+            'question mark' => [63, 'John?Smith', 'John?Smith', ''],
+            'long mode' => ['long', 'John?Smith', 'John?Smith', ''],
+            'entity mode' => ['entity', 'John?Smith', 'John?Smith', ''],
+            'replacement character' => [0xFFFD, "John\u{FFFD}Smith", "John\u{FFFD}Smith", ''],
+            'removed byte' => ['none', 'JohnSmith', 'JohnSmith', ''],
+            'space creates boundary' => [32, 'John Smith', 'John', 'Smith'],
+        ];
+    }
+
+    #[DataProvider('invalidUtf8SubstitutionProvider')]
+    public function testInvalidUtf8UsesAmbientSubstitutionWithoutChangingIt(
+        int|string $substitute,
+        string $source,
+        string $first,
+        string $last,
+    ): void {
+        $original = mb_substitute_character();
+        mb_substitute_character($substitute);
+
+        try {
+            $parser = new Parser();
+            $name = $parser->parse("John\xFFSmith");
+            $this->assertSame($source, $name->getSource());
+            $this->assertSame($first, $name->getFirstname());
+            $this->assertSame($last, $name->getLastname());
+            $this->assertSame($substitute, mb_substitute_character());
+            $this->assertSame('John Smith', $parser->parse('John Smith')->getFullName());
+            $this->assertSame($substitute, mb_substitute_character());
+        } finally {
+            mb_substitute_character($original);
+        }
     }
 
     public function testInvalidUtf8NicknameDelimiterIsIgnoredWithoutWarnings(): void

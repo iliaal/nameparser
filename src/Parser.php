@@ -781,8 +781,11 @@ class Parser
      * other controls are still stripped. Whitespace
      * collapsing only decides what becomes a space, and always matches whole
      * code points: setWhitespace() and parse() reject a set that is not valid
-     * UTF-8. Invalid input bytes are scrubbed to "?" before collapsing, and
-     * the control strip never returns an unstripped string, so the result is
+     * UTF-8. Invalid input bytes are scrubbed using the current process-wide
+     * mb_substitute_character() setting before collapsing (normally "?", a
+     * configured code point, or removal with "none"). That setting is not
+     * changed by the parser and can affect token boundaries. The
+     * control strip never returns an unstripped string, so the result is
      * always valid UTF-8.
      */
     protected function normalize(string $name): string
