@@ -177,7 +177,10 @@ class Confidence
     {
         $whitespace ??= " \r\n\t";
 
-        $normalized = trim(Text::replaceLineSeparators(mb_scrub($original, 'UTF-8')));
+        $normalized = mb_scrub($original, 'UTF-8');
+        // Match Parser's cap before normalization can shrink scrubbed input.
+        Text::assertInputByteBudget($normalized);
+        $normalized = trim(Text::replaceLineSeparators($normalized));
         $normalized = str_replace("\x00", '', $normalized);
 
         if ($whitespace === '') {
