@@ -8,6 +8,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Confidence assessment uses the parser's configured honorific connectors, so unattributed German or custom connectors no longer hide title/name ambiguity. Parsed name fields are unchanged.
 - Clarify whitespace normalization and the retained interior-tab exception for an empty whitespace set in the README. Keep the tab exception in one place without repeating the older caveat.
 
 ### Fixed

@@ -25,13 +25,15 @@ class Confidence
      * Nickname delimiters and whitespace mirror the Parser configuration the
      * input was parsed with (Name::getConfidence() forwards the stored
      * values), so decoration mapping and comma splitting agree with the
-     * parse. Null uses the default configuration. A whitespace set that is
+     * parse. Connectors likewise use the parse-time dictionary; null or an empty
+     * array uses the default English connectors. A whitespace set that is
      * not valid UTF-8 is rejected, as Parser::setWhitespace() rejects it.
      *
      * @param  array<int|string, string>|null  $suffixes
      * @param  array<int|string, string>|null  $salutations
      * @param  list<string>|null  $tokens
      * @param  array<string, string>|null  $nicknameDelimiters
+     * @param  array<string, string>|null  $connectors
      * @return array{ambiguous: bool, notes: list<string>}
      *
      * @throws \InvalidArgumentException when the whitespace set is not valid UTF-8
@@ -43,6 +45,7 @@ class Confidence
         ?array $tokens = null,
         ?array $nicknameDelimiters = null,
         ?string $whitespace = null,
+        ?array $connectors = null,
     ): array {
         Text::assertInputByteBudget($original);
         if ($whitespace !== null) {
@@ -115,6 +118,7 @@ class Confidence
                 $nicknameDelimiters,
                 $salutations,
                 $titleRunDecides,
+                $connectors,
             ));
             if (! $titleRunDecides
                 && count($nameTokens) === 1
@@ -461,6 +465,7 @@ class Confidence
      * @param  array<int|string, string>|null  $suffixes
      * @param  array<string, string>|null  $nicknameDelimiters
      * @param  array<int|string, string>|null  $salutations
+     * @param  array<string, string>|null  $connectors
      * @return array<int, \Iliaal\NameParser\Part\AbstractPart|string>
      */
     private static function mapDecorations(
@@ -469,6 +474,7 @@ class Confidence
         ?array $nicknameDelimiters = null,
         ?array $salutations = null,
         bool &$titleRunDecides = false,
+        ?array $connectors = null,
     ): array {
         $suffixes ??= English::SUFFIXES;
         $delimiters = self::delimiters($nicknameDelimiters);
@@ -478,6 +484,7 @@ class Confidence
             false,
             $suffixes,
             $delimiters,
+            $connectors ?? [],
         );
         $suffixMapper = new SuffixMapper($suffixes, false, 2, $delimiters);
         $nicknameMapper = new NicknameMapper($delimiters);
