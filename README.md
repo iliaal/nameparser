@@ -303,9 +303,11 @@ Fluent setters on `Parser`:
   capped at 131,072 expanded initial parts per parse and throws
   `LengthException` above that expansion ceiling.
 - `setMappers([...])` replaces the single-segment (Western, no-comma) pipeline
-  only. Comma forms and `setSurnameFirst(true)` use dedicated sub-parsers that
-  always build their own mapper lists from the language dictionaries. Pass `[]`
-  to restore the default pipeline.
+  only. Structural comma forms and successful surname-first splits use dedicated
+  sub-parsers built from the language dictionaries, bypassing this list. With
+  `setSurnameFirst(true)`, unsplit no-comma input still uses the configured
+  pipeline: for example, `Kim` or `Dr. Kim` has fewer than two tokens after
+  leading salutations. Pass `[]` to restore the default pipeline.
 
 ### Surname-first input
 
@@ -329,7 +331,9 @@ or credential does not establish a multi-token surname boundary.
 
 When fewer than two tokens remain after leading salutations, this split is not
 applied and ordinary mapping decides the fields: `Kim` stays a first name,
-while `Dr. Kim` has salutation `Dr.` and last name `Kim`.
+while `Dr. Kim` has salutation `Dr.` and last name `Kim`. These examples use
+the default pipeline. For no-comma input, this fallback honors a custom
+`setMappers()` list; structural comma forms still use the dedicated sub-parsers.
 
 ### Parsing limits
 

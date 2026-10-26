@@ -668,11 +668,12 @@ class Parser
     /**
      * set the mappers for this parser.
      *
-     * Only the single-segment (non-comma) pipeline uses this list. Comma input
-     * ("Last, First") and setSurnameFirst(true) go through dedicated
-     * surname/given-name sub-parsers built by SegmentParserFactory, so a
-     * custom list does not apply there. The language dictionaries do
-     * propagate to the sub-parsers.
+     * Only the unsplit, non-comma pipeline uses this list. Structural comma
+     * input ("Last, First") and successful surname-first splits go through
+     * dedicated surname/given-name sub-parsers built by SegmentParserFactory.
+     * With setSurnameFirst(true), no-comma input that cannot split (for
+     * example "Kim" or "Dr. Kim") still uses this list. The language
+     * dictionaries propagate to the dedicated sub-parsers.
      *
      * Name::getConfidence() always uses the language-merged suffix dictionary
      * (getSuffixes()), not a custom SuffixMapper's constructor map.
@@ -1129,8 +1130,9 @@ class Parser
      * salutations. Empty and credential-only comma tails also use this order;
      * an explicit comma given-name segment takes precedence. Multi-token
      * surnames need that explicit boundary. With fewer than two tokens after
-     * salutations, ordinary mapping applies. The surname-first split uses the
-     * comma-form sub-parsers, so a custom setMappers() list does not apply there.
+     * salutations, ordinary mapping applies; for no-comma input this honors a
+     * custom setMappers() list. Successful splits and structural comma forms
+     * use the dedicated sub-parsers instead.
      */
     public function setSurnameFirst(bool $surnameFirst): Parser
     {
