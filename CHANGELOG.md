@@ -6,15 +6,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-26
+
 ### Changed
 
 - Confidence assessment uses the parser's configured honorific connectors, so unattributed German or custom connectors no longer hide title/name ambiguity. Parsed name fields are unchanged.
 - Clarify whitespace normalization and the retained interior-tab exception for an empty whitespace set in the README. Keep the tab exception in one place without repeating the older caveat.
+- Clarify in the README that invalid UTF-8 is scrubbed with the process-wide `mb_substitute_character()` setting, which the parser does not change, and that a custom `setMappers()` list still applies to unsplit no-comma input under `setSurnameFirst(true)` (`Kim`, `Dr. Kim`). Parsing behavior is unchanged.
 
 ### Fixed
 
 - Explicit dot-separated initials no longer become surname particles in mixed-case names: `John D.E. Smith` keeps initials `D E` and surname `Smith`. Undotted particles, uniform-uppercase ambiguity handling, and configured combined-initial limits are unchanged.
-
 - Nickname-delimiter sanitization no longer copies every valid configured pair before keeping the first 32. Large configurations use bounded temporary storage while retaining validation of all entries.
 - Surname particles remain attached after given-name initials: `J. van Gogh` now keeps first name `J.` and surname `van Gogh`, rather than promoting `van` to the first name. This also applies with a salutation, nickname, or trailing credential. See the [parser regression cases](tests/InitialSurnamePrefixTest.php).
 - Numeric symmetric nickname delimiters now obey token boundaries when splitting names and shield nickname commas during standalone confidence assessment.
@@ -251,7 +253,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `setWhitespace()` now trims the configured characters from the edges of the input.
 - `setMaxSalutationIndex()` larger than the token count no longer emits undefined-array-key warnings.
 
-[Unreleased]: https://github.com/iliaal/nameparser/compare/1.6.0...HEAD
+[Unreleased]: https://github.com/iliaal/nameparser/compare/1.7.0...HEAD
+[1.7.0]: https://github.com/iliaal/nameparser/compare/1.6.0...1.7.0
 [1.6.0]: https://github.com/iliaal/nameparser/compare/1.5.0...1.6.0
 [1.5.0]: https://github.com/iliaal/nameparser/compare/1.4.1...1.5.0
 [1.4.1]: https://github.com/iliaal/nameparser/compare/1.4.0...1.4.1
