@@ -5,6 +5,7 @@ All notable changes to this project are documented here. The format is based on
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- Confidence no longer treats an unattributed configured honorific connector in a comma tail as evidence resolving a title/name collision; parsed fields are unchanged.
 
 ## [1.7.0] - 2026-10-26
 

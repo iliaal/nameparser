@@ -122,7 +122,7 @@ class Confidence
             ));
             if (! $titleRunDecides
                 && count($nameTokens) === 1
-                && ! self::hasDecidingStructuralComma($normalized, $suffixes, $nicknameDelimiters)) {
+                && ! self::hasDecidingStructuralComma($normalized, $suffixes, $nicknameDelimiters, $salutations, $connectors)) {
                 $notes["'{$lead}' could be a name or a salutation; nothing in the input decides it"] = true;
             }
         }
@@ -546,15 +546,20 @@ class Confidence
 
     /**
      * A comma decides name order only when names occur on both sides.
-     * Map each segment once to keep delimiter-heavy input linear.
+     * Map each segment once to keep delimiter-heavy input linear. Honorific
+     * connectors in the combined given-name tail do not count as names.
      *
      * @param  array<int|string, string>|null  $suffixes
      * @param  array<string, string>|null  $nicknameDelimiters
+     * @param  array<int|string, string>|null  $salutations
+     * @param  array<string, string>|null  $connectors
      */
     private static function hasDecidingStructuralComma(
         string $normalized,
         ?array $suffixes,
         ?array $nicknameDelimiters = null,
+        ?array $salutations = null,
+        ?array $connectors = null,
     ): bool {
         $segments = StructuralCommaSplitter::split($normalized, self::delimiters($nicknameDelimiters));
         if (count($segments) < 2) {
@@ -566,21 +571,44 @@ class Confidence
             self::delimiters($nicknameDelimiters),
         );
 
-        $firstNameBearing = null;
-        $lastNameBearing = null;
-        foreach ($segments as $index => $segment) {
-            $parts = $suffixMapper->map($nicknameMapper->map(self::tokenizeWords($segment)));
-            // The surname segment parse promotes nicknames to Lastname when no
-            // raw name remains ('"Lord", Smith' binds surname Lord).
-            if (self::rawNameTokens($parts) !== []
-                || ($index === 0 && self::hasNicknamePart($parts))) {
-                $firstNameBearing ??= $index;
-                $lastNameBearing = $index;
+        $surnameParts = $suffixMapper->map($nicknameMapper->map(self::tokenizeWords(array_shift($segments))));
+        // The surname segment parse promotes nicknames to Lastname when no
+        // raw name remains ('"Lord", Smith' binds surname Lord).
+        if (self::rawNameTokens($surnameParts) === [] && ! self::hasNicknamePart($surnameParts)) {
+            return false;
+        }
+
+        $tailParts = [];
+        foreach ($segments as $segment) {
+            foreach ($suffixMapper->map($nicknameMapper->map(self::tokenizeWords($segment))) as $part) {
+                $tailParts[] = $part;
             }
         }
 
-        return $firstNameBearing !== null
-            && $lastNameBearing !== null
-            && $firstNameBearing !== $lastNameBearing;
+        $connectorDictionary = $connectors ?: SalutationMapper::DEFAULT_CONNECTORS;
+        $hasConnector = false;
+        foreach ($tailParts as $part) {
+            if (is_string($part) && isset($connectorDictionary[Text::key($part)])) {
+                $hasConnector = true;
+                break;
+            }
+        }
+
+        if (! $hasConnector) {
+            return self::rawNameTokens($tailParts) !== [];
+        }
+
+        // Match the comma-tail salutation pass: a colliding title such as Lady
+        // remains a name, while an unattributed connector and following Rev.
+        // do not. Keep the tail together so this also holds across commas.
+        $salutationMapper = new SalutationMapper(
+            $salutations ?? English::SALUTATIONS,
+            requireRemainder: true,
+            suffixes: $suffixes ?? English::SUFFIXES,
+            nicknameDelimiters: self::delimiters($nicknameDelimiters),
+            connectors: $connectors ?? [],
+        );
+
+        return self::rawNameTokens($suffixMapper->map($salutationMapper->map($tailParts))) !== [];
     }
 }

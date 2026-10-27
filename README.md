@@ -233,8 +233,11 @@ resolves to the given name.
 
 A suffix, nickname, or empty trailing comma does not settle a two-part
 salutation collision: `"Lord Ashcroft MD"`, `"Lord Ashcroft (Bob)"`, and
-`"Lord Ashcroft,"` are still flagged. A structural comma with name-bearing
-content on both sides, as in `"Lord, Ashcroft"`, resolves it.
+`"Lord Ashcroft,"` are still flagged. An unattributed honorific connector in
+the comma tail does not supply a name either: `"Lord Ashcroft, and"` and
+`"Lord Ashcroft, and Rev."` remain ambiguous, but `"Lord Ashcroft, and Lady"`
+retains the name-colliding `Lady` as a given name. A structural comma with
+name-bearing content on both sides, as in `"Lord, Ashcroft"`, resolves it.
 
 For a non-default language set, standalone `Confidence::assess($string)` still
 uses the English salutation/connector scope and the full ambiguous-suffix table.
