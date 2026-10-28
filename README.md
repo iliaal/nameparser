@@ -348,6 +348,10 @@ comma segments are coalesced during structural splitting, so a delimiter-only
 row at the byte limit does not allocate one array entry per comma.
 
 Standalone `Confidence::assess($string)` applies the same byte and token limits.
+Both entry points check the byte limit on the original input and again after
+UTF-8 scrubbing, before whitespace or control-character normalization can
+shrink it. A multibyte `mb_substitute_character()` replacement can therefore
+make otherwise in-limit malformed input exceed the byte cap.
 `Name::getConfidence()` reuses the tokens from the already validated parse
 instead of tokenizing the source again. Explicitly supplied token arrays are
 also limited to 65,536 entries and 1,048,576 aggregate token bytes; supplying
