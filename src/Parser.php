@@ -484,7 +484,7 @@ class Parser
      */
     private function isUniformUpperInput(string $name): bool
     {
-        // Cap Unicode/comma splitting: the byte-budget prefilter only counts ASCII separators.
+        // Bound casing-analysis splitting independently of configured token boundaries.
         $tokens = preg_split('/[\s,]+/u', $name, Text::MAX_INPUT_TOKENS + 1) ?: [];
         $hasCased = false;
 
@@ -856,16 +856,11 @@ class Parser
         $insideToken = false;
         $length = strlen($budgetInput);
 
-        // This ASCII prefilter undercounts Unicode separators; capped preg_split
-        // bounds the full Unicode scan.
+        // Normalization has already applied the configured whitespace rules.
+        // Match tokenization: retained interior tabs are content, not separators.
         for ($i = 0; $i < $length; $i++) {
             if ($budgetInput[$i] === ' '
-                || $budgetInput[$i] === ','
-                || $budgetInput[$i] === "\t"
-                || $budgetInput[$i] === "\n"
-                || $budgetInput[$i] === "\r"
-                || $budgetInput[$i] === "\x0B"
-                || $budgetInput[$i] === "\x0C") {
+                || $budgetInput[$i] === ',') {
                 $insideToken = false;
 
                 continue;

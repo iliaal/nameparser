@@ -8,6 +8,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Parsing with an empty whitespace set no longer counts retained interior tabs as token boundaries, avoiding false token-limit errors while preserving the byte and actual-token limits.
 - Confidence no longer treats an unattributed configured honorific connector in a comma tail as evidence resolving a title/name collision; parsed fields are unchanged.
 - Confidence assessment enforces the byte limit after UTF-8 scrubbing as well as before it, matching parsing when malformed bytes expand through multibyte replacement characters.
 
