@@ -101,7 +101,6 @@ class InitialMapper extends AbstractMapper
                 if (
                     $length > 1
                     && $length <= $this->combinedMax
-                    && $stripped !== mb_strtolower($stripped, 'UTF-8')
                 ) {
                     $initials = Text::graphemes($stripped);
 

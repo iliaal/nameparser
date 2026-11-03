@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Simplify combined-initial detection by removing a redundant lowercase comparison after the uppercase check. Parsing behavior is unchanged.
+
 ### Fixed
 
 - Parsing with an empty whitespace set no longer counts retained interior tabs as token boundaries, avoiding false token-limit errors while preserving the byte and actual-token limits.
