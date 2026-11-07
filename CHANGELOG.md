@@ -8,6 +8,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Tab-preserving control stripping no longer invokes a PHP callback for every control character. Empty-whitespace parsing and confidence assessment keep the same normalized output with less per-character overhead.
 - Simplify combined-initial detection by removing a redundant lowercase comparison after the uppercase check. Parsing behavior is unchanged.
 
 ### Fixed

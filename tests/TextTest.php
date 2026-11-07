@@ -8,6 +8,35 @@ use PHPUnit\Framework\TestCase;
 
 class TextTest extends TestCase
 {
+    #[DataProvider('controlCharacterCases')]
+    public function testStripControlChars(string $text, string $expected, bool $preserveTab): void
+    {
+        $this->assertSame($expected, Text::stripControlChars($text, $preserveTab));
+    }
+
+    /**
+     * @return iterable<string, array{string, string, bool}>
+     */
+    public static function controlCharacterCases(): iterable
+    {
+        $controls = '';
+        foreach ([...range(0, 31), ...range(127, 159)] as $codepoint) {
+            $controls .= mb_chr($codepoint, 'UTF-8');
+        }
+
+        // Format controls include supplementary-plane tags, not just C0/C1 bytes.
+        $formats = "\u{00AD}\u{061C}\u{200B}\u{200C}\u{200D}\u{202E}\u{2066}\u{FEFF}\u{E0001}\u{E007F}";
+        $visible = "É李\u{FE00}e\u{0301}";
+
+        yield 'remove every C0 and C1 control' => [$visible . $controls . $visible, $visible . $visible, false];
+        yield 'preserve only tab among C0 and C1 controls' => [$visible . $controls . $visible, $visible . "\t" . $visible, true];
+        yield 'remove format controls' => [$formats . $visible . $formats, $visible, false];
+        yield 'remove format controls while preserving tabs' => ["\t" . $formats . $visible . $formats . "\t", "\t" . $visible . "\t", true];
+        yield 'preserve adjacent tabs' => ["\t\tJohn\t\tSmith\t\t", "\t\tJohn\t\tSmith\t\t", true];
+        yield 'remove adjacent tabs' => ["\t\tJohn\t\tSmith\t\t", 'JohnSmith', false];
+        yield 'empty input' => ['', '', true];
+    }
+
     #[DataProvider('unknownCredentialCandidates')]
     public function testUnknownCredentialCandidate(string $token, bool $expected): void
     {

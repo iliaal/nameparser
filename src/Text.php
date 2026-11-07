@@ -82,14 +82,8 @@ final class Text
             $text = mb_scrub($text, 'UTF-8');
         }
 
-        $pattern = '/[\p{Cc}\p{Cf}]/u';
-        $stripped = $preserveTab
-            ? preg_replace_callback(
-                $pattern,
-                static fn(array $matches): string => $matches[0] === "\t" ? "\t" : '',
-                $text,
-            )
-            : preg_replace($pattern, '', $text);
+        $pattern = $preserveTab ? '/(?!\t)[\p{Cc}\p{Cf}]/u' : '/[\p{Cc}\p{Cf}]/u';
+        $stripped = preg_replace($pattern, '', $text);
 
         if ($stripped === null) {
             throw new \UnexpectedValueException(
