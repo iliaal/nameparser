@@ -128,6 +128,13 @@ class NicknameMapper extends AbstractMapper
                         $openSymmetric[$opener] = true;
                     }
 
+                    // Adjacent asymmetric openers belong to the same span, but
+                    // only the outermost delimiter is removed from its text.
+                    if ($opener !== '' && str_starts_with($part, $opener)
+                        && mb_check_encoding($part, 'UTF-8')) {
+                        $this->appendNestedOpeners($stripped, $delimiterStack);
+                    }
+
                     if (! $isEncapsulated) {
                         $part = $stripped;
                         $openingDelimiter = $opener;
@@ -217,6 +224,30 @@ class NicknameMapper extends AbstractMapper
         }
 
         return array_values($parts);
+    }
+
+    /**
+     * @param  list<array{open: string, close: string, symmetric: bool}>  $delimiterStack
+     */
+    private function appendNestedOpeners(string $remaining, array &$delimiterStack): void
+    {
+        while (count($delimiterStack) < self::MAX_NESTING_DEPTH
+            && preg_match($this->regexp, $remaining, $matches)) {
+            $open = $matches[1];
+            $close = $this->delimiters[$open] ?? '';
+
+            // Closers take precedence over overlapping custom openers.
+            // Quotes must start a token, and custom regex captures must be
+            // configured, nonempty prefixes before consuming another opener.
+            if (str_starts_with($remaining, $delimiterStack[count($delimiterStack) - 1]['close'])
+                || $open === '' || $close === '' || $open === $close
+                || ! str_starts_with($remaining, $open)) {
+                break;
+            }
+
+            $delimiterStack[] = ['open' => $open, 'close' => $close, 'symmetric' => false];
+            $remaining = self::stripOpener($remaining, $open);
+        }
     }
 
     private static function stripOpener(string $part, string $opener): string

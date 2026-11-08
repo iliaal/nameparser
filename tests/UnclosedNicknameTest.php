@@ -67,6 +67,50 @@ class UnclosedNicknameTest extends TestCase
         $this->assertSame($suffix, $name->getSuffix(), "suffix for '$input'");
     }
 
+    /**
+     * @return iterable<string, array{string, string, string, string, array<string, string>}>
+     */
+    public static function adjacentNestedNicknameProvider(): iterable
+    {
+        yield 'same pair' => ['John ((Bob) Robert) Doe', '(Bob) Robert', '', 'John', []];
+        yield 'mixed pairs' => ['John ([Bob] Robert) Doe', '[Bob] Robert', '', 'John', []];
+        yield 'inside a span' => ['John (Bob ((Rob) Robert) Z) Doe', 'Bob ((Rob) Robert) Z', '', 'John', []];
+        yield 'comma inside a nested nickname' => ['John ((Bob), Robert) Doe', '(Bob), Robert', '', 'John', []];
+        yield 'punctuation after inner closer' => ['John ((Bob); Robert) Doe', '(Bob); Robert', '', 'John', []];
+        yield 'empty nested nickname' => ['John (() ) Doe', '()', '', 'John', []];
+        yield 'unclosed span' => ['John ((Bob) Robert Doe', '', '(Bob) Robert', 'John (Bob) Robert', []];
+        yield 'mismatched closer' => ['John ([Bob) Robert] Doe', '', '[Bob) Robert]', 'John [Bob) Robert]', []];
+        yield 'unclosed asymmetric span inside a quote' => ['John "(Bob Robert" Doe', '', '(Bob Robert"', 'John (Bob Robert"', []];
+        yield 'custom longest opener' => ['John <<<<Bob>> Robert>> Doe', '<<Bob>> Robert', '', 'John', ['<' => '>', '<<' => '>>']];
+        yield 'Unicode pair' => ['John ««Bób» Robert» Doe', '«Bób» Robert', '', 'John', ['«' => '»']];
+    }
+
+    /**
+     * @param  array<string, string>  $delimiters
+     */
+    #[DataProvider('adjacentNestedNicknameProvider')]
+    public function testAdjacentNestedNicknameFields(
+        string $input,
+        string $nickname,
+        string $middle,
+        string $given,
+        array $delimiters,
+    ): void {
+        $parser = (new Parser())->setNicknameDelimiters($delimiters);
+        $this->assertSame([
+            'salutation' => '',
+            'firstname' => 'John',
+            'initials' => '',
+            'middlename' => $middle,
+            'lastname_prefix' => '',
+            'lastname' => 'Doe',
+            'suffix' => '',
+            'nickname' => $nickname,
+            'given_name' => $given,
+            'full_name' => $given . ' Doe',
+        ], $parser->parse($input)->toArray());
+    }
+
     public function testClosedNicknameStillExtracted(): void
     {
         $name = (new Parser())->parse('John (Bob) Smith');
