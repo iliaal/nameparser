@@ -8,6 +8,7 @@ use Iliaal\NameParser\Mapper\SuffixMapper;
 use Iliaal\NameParser\Part\AbstractPart;
 use Iliaal\NameParser\Part\Firstname;
 use Iliaal\NameParser\Part\Lastname;
+use Iliaal\NameParser\Part\Nickname;
 use Iliaal\NameParser\Part\Suffix;
 use PHPUnit\Framework\Attributes\DataProvider;
 
@@ -164,6 +165,72 @@ class SuffixMapperTest extends AbstractMapperTestCase
         $english = new English();
 
         return new SuffixMapper($english->getSuffixes(), $matchSinglePart, $reservedParts);
+    }
+
+    /**
+     * @return iterable<string, array{array<int, AbstractPart|string>, list<AbstractPart|string>}>
+     */
+    public static function credentialRewriteProvider(): iterable
+    {
+        yield 'trailing credentials' => [
+            ['John', 'Smith', 'MD', 'PhD'],
+            ['John', 'Smith', new Suffix('MD', 'MD'), new Suffix('PhD', 'PhD')],
+        ];
+        yield 'leading credentials' => [
+            ['MD', 'PhD', 'John', 'Smith'],
+            ['John', 'Smith', new Suffix('MD', 'MD'), new Suffix('PhD', 'PhD')],
+        ];
+        yield 'credentials on both sides of names' => [
+            ['MD', 'John', 'Smith', 'PhD'],
+            ['John', 'Smith', new Suffix('MD', 'MD'), new Suffix('PhD', 'PhD')],
+        ];
+        yield 'noise before the first credential' => [
+            ['John', 'Smith', '.', 'MD'],
+            ['John', 'Smith', new Suffix('MD', 'MD')],
+        ];
+        yield 'noise after a credential' => [
+            ['John', 'Smith', 'MD', '.', 'unknown'],
+            ['John', 'Smith', new Suffix('MD', 'MD')],
+        ];
+        yield 'interrupted credentials and unknown candidate' => [
+            ['John', 'MD', 'Smith', 'FACS', 'PhD'],
+            ['John', 'Smith', new Suffix('MD', 'MD'), new Suffix('FACS'), new Suffix('PhD', 'PhD')],
+        ];
+        yield 'sparse integer keys' => [
+            [5 => 'MD', 9 => 'John', 12 => 'Smith', 20 => 'PhD'],
+            ['John', 'Smith', new Suffix('MD', 'MD'), new Suffix('PhD', 'PhD')],
+        ];
+        yield 'unanchored noise stays unchanged' => [
+            ['John', 'Smith', '.'],
+            ['John', 'Smith', '.'],
+        ];
+    }
+
+    /**
+     * @param  array<int, AbstractPart|string>  $input
+     * @param  list<AbstractPart|string>  $expected
+     */
+    #[DataProvider('credentialRewriteProvider')]
+    public function testCredentialRewritePreservesOrder(array $input, array $expected): void
+    {
+        $mapped = $this->getMapper(reservedParts: 0)->map($input);
+
+        $this->assertTrue(array_is_list($mapped));
+        $this->assertSame(self::canonicalParts($expected), self::canonicalParts($mapped));
+    }
+
+    public function testCredentialRewriteKeepsMappedPartIdentity(): void
+    {
+        $first = new Firstname('John');
+        $nickname = new Nickname('Doc');
+        $last = new Lastname('Smith');
+        $mapped = $this->getMapper()->map([$first, $nickname, $last, 'MD', 'PhD']);
+
+        $this->assertSame([$first, $nickname, $last], array_slice($mapped, 0, 3));
+        $this->assertSame(
+            self::canonicalParts([$first, $nickname, $last, new Suffix('MD', 'MD'), new Suffix('PhD', 'PhD')]),
+            self::canonicalParts($mapped),
+        );
     }
 
     public function testAmbiguousCredentialDecisionUsesProtectedUppercaseHook(): void

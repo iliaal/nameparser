@@ -286,24 +286,15 @@ class SuffixMapper extends AbstractMapper
         sort($creditIndexes);
         /** @var array<int, true> $creditSet */
         $creditSet = array_fill_keys($creditIndexes, true);
-        $firstCreditIndex = $creditIndexes[0];
 
         $rewritten = [];
 
-        for ($i = 0; $i < $firstCreditIndex; $i++) {
-            if (isset($noiseIndexes[$i])) {
-                continue;
-            }
-
-            $rewritten[] = $parts[$i];
-        }
-
-        for ($i = $firstCreditIndex; $i < count($parts); $i++) {
+        foreach ($parts as $i => $part) {
             if (isset($creditSet[$i]) || isset($noiseIndexes[$i])) {
                 continue;
             }
 
-            $rewritten[] = $parts[$i];
+            $rewritten[] = $part;
         }
 
         foreach ($creditIndexes as $index) {
