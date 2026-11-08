@@ -279,6 +279,81 @@ class NicknameMapperTest extends AbstractMapperTestCase
     }
 
     /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function asymmetricDelimiterProvider(): iterable
+    {
+        yield 'ASCII' => ['(', ')'];
+        yield 'multi-character ASCII' => ['<<', '>>'];
+        yield 'multibyte' => ['«', '»'];
+        yield 'multi-character Unicode' => ['«界', '界»'];
+        yield 'combining mark' => ["e\u{0301}", 'x'];
+        yield 'numeric key' => ['1', '2'];
+    }
+
+    #[DataProvider('asymmetricDelimiterProvider')]
+    public function testOpeningDelimitersAreRemovedExactly(string $open, string $close): void
+    {
+        $mapper = new NicknameMapper([$open => $close]);
+
+        $this->assertSame(
+            self::canonicalParts(['John', new Nickname('Bób'), 'Smith']),
+            self::canonicalParts($mapper->map(['John', $open . 'Bób' . $close, 'Smith'])),
+        );
+        $this->assertSame(
+            ['John', 'Bób', 'Smith'],
+            $mapper->map(['John', $open . 'Bób', 'Smith']),
+        );
+        $this->assertSame(
+            ['John', 'Smith'],
+            $mapper->map(['John', $open, 'Smith']),
+        );
+
+        // A malformed token cannot match the Unicode opener regex.
+        $malformed = ['John', $open . "B\xFFb", 'Smith'];
+        $this->assertSame($malformed, $mapper->map($malformed));
+    }
+
+    /**
+     * @return iterable<string, array{string, string, string, bool}>
+     */
+    public static function customOpenerRegexProvider(): iterable
+    {
+        yield 'malformed closed token without Unicode flag' => ['/^(«)/', "«B\xFFb»", 'B?b', true];
+        yield 'malformed unclosed token without Unicode flag' => ['/^(«)/', "«B\xFFb", 'B?b', false];
+        yield 'capture after a prefix' => ['/^x(«)/u', 'x«Bób»', '«Bób', true];
+        yield 'capture splits a UTF-8 character' => ['/^(\xC2)/', '«Bob', 'Bob', false];
+    }
+
+    #[DataProvider('customOpenerRegexProvider')]
+    public function testCustomOpenerRegexKeepsCharacterSlicing(string $pattern, string $input, string $expected, bool $closed): void
+    {
+        $mapper = new class ($pattern) extends NicknameMapper {
+            public function __construct(private string $pattern)
+            {
+                parent::__construct(['«' => '»']);
+            }
+
+            #[\Override]
+            protected function buildRegexp(): string
+            {
+                return $this->pattern;
+            }
+        };
+        $substitute = mb_substitute_character();
+        mb_substitute_character(63);
+
+        try {
+            $this->assertSame(
+                self::canonicalParts([$closed ? new Nickname($expected) : $expected]),
+                self::canonicalParts($mapper->map([$input])),
+            );
+        } finally {
+            mb_substitute_character($substitute);
+        }
+    }
+
+    /**
      * @return array<string, array{string, string}>
      */
     public static function replacementDelimiterQuoteProvider(): array

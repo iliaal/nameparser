@@ -109,7 +109,7 @@ class NicknameMapper extends AbstractMapper
             if (preg_match($this->regexp, $part, $matches)) {
                 $opener = $matches[1];
                 $closer = $this->delimiters[$opener] ?? '';
-                $stripped = mb_substr($part, mb_strlen($opener, 'UTF-8'), null, 'UTF-8');
+                $stripped = self::stripOpener($part, $opener);
                 $isSymmetric = $opener === $closer;
 
                 // An unmatched leading quote may be an elided particle ("'t Hooft").
@@ -196,7 +196,7 @@ class NicknameMapper extends AbstractMapper
             if ($open !== null && is_string($parts[$open])) {
                 $cleaned = $parts[$open];
                 if (str_starts_with($cleaned, $openingDelimiter)) {
-                    $cleaned = mb_substr($cleaned, mb_strlen($openingDelimiter, 'UTF-8'), null, 'UTF-8');
+                    $cleaned = self::stripOpener($cleaned, $openingDelimiter);
                 }
 
                 $cleaned = rtrim($cleaned, ',;');
@@ -217,6 +217,16 @@ class NicknameMapper extends AbstractMapper
         }
 
         return array_values($parts);
+    }
+
+    private static function stripOpener(string $part, string $opener): string
+    {
+        // Keep mbstring semantics for subclasses overriding the opener regex.
+        return str_starts_with($part, $opener)
+            && mb_check_encoding($opener, 'UTF-8')
+            && mb_check_encoding($part, 'UTF-8')
+            ? substr($part, strlen($opener))
+            : mb_substr($part, mb_strlen($opener, 'UTF-8'), null, 'UTF-8');
     }
 
     /**
