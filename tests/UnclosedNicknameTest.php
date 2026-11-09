@@ -72,6 +72,10 @@ class UnclosedNicknameTest extends TestCase
      */
     public static function adjacentNestedNicknameProvider(): iterable
     {
+        yield 'literal heart' => ['John (<3) Doe', '<3', '', 'John', []];
+        yield 'literal brace' => ['John ({Bob) Doe', '{Bob', '', 'John', []];
+        yield 'literal bracket' => ['John ([Bob) Doe', '[Bob', '', 'John', []];
+        yield 'literal parenthesis' => ['John {(Bob} Doe', '(Bob', '', 'John', []];
         yield 'same pair' => ['John ((Bob) Robert) Doe', '(Bob) Robert', '', 'John', []];
         yield 'mixed pairs' => ['John ([Bob] Robert) Doe', '[Bob] Robert', '', 'John', []];
         yield 'inside a span' => ['John (Bob ((Rob) Robert) Z) Doe', 'Bob ((Rob) Robert) Z', '', 'John', []];
@@ -80,7 +84,7 @@ class UnclosedNicknameTest extends TestCase
         yield 'empty nested nickname' => ['John (() ) Doe', '()', '', 'John', []];
         yield 'unclosed span' => ['John ((Bob) Robert Doe', '', '(Bob) Robert', 'John (Bob) Robert', []];
         yield 'mismatched closer' => ['John ([Bob) Robert] Doe', '', '[Bob) Robert]', 'John [Bob) Robert]', []];
-        yield 'unclosed asymmetric span inside a quote' => ['John "(Bob Robert" Doe', '', '(Bob Robert"', 'John (Bob Robert"', []];
+        yield 'unclosed asymmetric span inside a quote' => ['John "(Bob Robert" Doe', '(Bob Robert', '', 'John', []];
         yield 'custom longest opener' => ['John <<<<Bob>> Robert>> Doe', '<<Bob>> Robert', '', 'John', ['<' => '>', '<<' => '>>']];
         yield 'Unicode pair' => ['John ««Bób» Robert» Doe', '«Bób» Robert', '', 'John', ['«' => '»']];
     }

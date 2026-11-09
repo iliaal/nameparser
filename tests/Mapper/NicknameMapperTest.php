@@ -284,7 +284,7 @@ class NicknameMapperTest extends AbstractMapperTestCase
         yield 'outer quote with asymmetric nesting' => [[], ['John', '"(Bob)', 'Robert"', 'Doe'],
             ['John', new Nickname('(Bob)'), new Nickname('Robert'), 'Doe']];
         yield 'unclosed asymmetric span inside an outer quote' => [[], ['John', '"(Bob', 'Robert"', 'Doe'],
-            ['John', '(Bob', 'Robert"', 'Doe']];
+            ['John', new Nickname('(Bob'), new Nickname('Robert'), 'Doe']];
         yield 'empty nested nickname' => [[], ['John', '(()', ')', 'Doe'],
             ['John', new Nickname('()'), 'Doe']];
 
@@ -292,6 +292,27 @@ class NicknameMapperTest extends AbstractMapperTestCase
             yield $label . ' nested prefix' => [[$open => $close],
                 ['John', $open . $open . 'Bób' . $close, 'Robert' . $close, 'Doe'],
                 ['John', new Nickname($open . 'Bób' . $close), new Nickname('Robert'), 'Doe']];
+        }
+        foreach (self::asymmetricDelimiterProvider() as $label => [$open, $close]) {
+            // Use a distinct outer pair so its closer cannot close the literal prefix.
+            $delimiters = ['{' => '}', $open => $close];
+            yield $label . ' literal prefix' => [$delimiters,
+                ['John', '{' . $open . 'Bób}', 'Doe'],
+                ['John', new Nickname($open . 'Bób'), 'Doe']];
+            yield $label . ' literal prefix across tokens' => [$delimiters,
+                ['John', '{' . $open . 'Bób', 'Robert}', 'Doe'],
+                ['John', new Nickname($open . 'Bób'), new Nickname('Robert'), 'Doe']];
+            yield $label . ' literal inside nested span' => [$delimiters,
+                ['John', '{{' . $open . 'Bób}', 'Robert}', 'Doe'],
+                ['John', new Nickname('{' . $open . 'Bób}'), new Nickname('Robert'), 'Doe']];
+            yield $label . ' closer only before opener' => [$delimiters,
+                ['Earlier' . $close, 'John', '{' . $open . 'Bób}', 'Doe'],
+                ['Earlier' . $close, 'John', new Nickname($open . 'Bób'), 'Doe']];
+        }
+        foreach (['<' => '>', '[' => ']', '{' => '}'] as $open => $close) {
+            yield $open . ' default literal prefix' => [[],
+                ['John', '(' . $open . 'Bob)', 'Doe'],
+                ['John', new Nickname($open . 'Bob'), 'Doe']];
         }
         yield 'closer also opens another pair' => [['(' => ')', ')' => ']'],
             ['John', '()', 'Doe'], ['John', 'Doe']];
@@ -316,6 +337,20 @@ class NicknameMapperTest extends AbstractMapperTestCase
         $this->assertSame(
             self::canonicalParts($expected),
             self::canonicalParts((new NicknameMapper($delimiters))->map($input)),
+        );
+    }
+
+    public function testAdjacentCloserCacheIsResetBetweenCalls(): void
+    {
+        $mapper = new NicknameMapper();
+        $mapper->map(['John', '([Bob', 'Robert])', 'Doe']);
+        $this->assertSame(
+            self::canonicalParts(['John', new Nickname('[Bob'), 'Doe']),
+            self::canonicalParts($mapper->map(['John', '([Bob)', 'Doe'])),
+        );
+        $this->assertSame(
+            self::canonicalParts(['John', new Nickname('[Bob'), new Nickname('Robert]'), 'Doe']),
+            self::canonicalParts($mapper->map(['John', '([Bob', 'Robert])', 'Doe'])),
         );
     }
 

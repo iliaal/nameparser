@@ -42,6 +42,11 @@ class NicknameMapper extends AbstractMapper
      */
     private array $lastCloserIndex = [];
 
+    /**
+     * @var array<string, int|null> Last token containing each adjacent asymmetric closer.
+     */
+    private array $lastNestedCloserIndex = [];
+
     private string $quoteTrimCharacters = '';
 
     /**
@@ -75,6 +80,7 @@ class NicknameMapper extends AbstractMapper
         }
 
         $this->lastCloserIndex = [];
+        $this->lastNestedCloserIndex = [];
 
         $openingDelimiter = '';
 
@@ -132,7 +138,7 @@ class NicknameMapper extends AbstractMapper
                     // only the outermost delimiter is removed from its text.
                     if ($opener !== '' && str_starts_with($part, $opener)
                         && mb_check_encoding($part, 'UTF-8')) {
-                        $this->appendNestedOpeners($stripped, $delimiterStack);
+                        $this->appendNestedOpeners($stripped, $delimiterStack, $parts, $k);
                     }
 
                     if (! $isEncapsulated) {
@@ -228,8 +234,9 @@ class NicknameMapper extends AbstractMapper
 
     /**
      * @param  list<array{open: string, close: string, symmetric: bool}>  $delimiterStack
+     * @param  PartArray  $parts
      */
-    private function appendNestedOpeners(string $remaining, array &$delimiterStack): void
+    private function appendNestedOpeners(string $remaining, array &$delimiterStack, array $parts, int $openKey): void
     {
         while (count($delimiterStack) < self::MAX_NESTING_DEPTH
             && preg_match($this->regexp, $remaining, $matches)) {
@@ -243,6 +250,24 @@ class NicknameMapper extends AbstractMapper
                 || $open === '' || $close === '' || $open === $close
                 || ! str_starts_with($remaining, $open)) {
                 break;
+            }
+
+            // A literal prefix such as <3 or {Bob must not prevent the outer
+            // nickname from closing when the inner closer never appears.
+            if (! str_contains(self::stripOpener($remaining, $open), $close)) {
+                if (! array_key_exists($close, $this->lastNestedCloserIndex)) {
+                    $last = null;
+                    foreach ($parts as $k => $part) {
+                        if (is_string($part) && str_contains($part, $close)) {
+                            $last = $k;
+                        }
+                    }
+                    $this->lastNestedCloserIndex[$close] = $last;
+                }
+                $last = $this->lastNestedCloserIndex[$close];
+                if ($last === null || $last <= $openKey) {
+                    break;
+                }
             }
 
             $delimiterStack[] = ['open' => $open, 'close' => $close, 'symmetric' => false];
