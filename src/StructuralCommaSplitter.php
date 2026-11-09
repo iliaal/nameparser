@@ -7,7 +7,8 @@ final class StructuralCommaSplitter
     public const string COMMA_PLACEHOLDER = "\x00";
 
     /**
-     * Past these scan caps, further openers are literal and commas are structural.
+     * Past the depth cap, further openers are literal. Past the comma cap,
+     * further commas are structural.
      */
     private const int MAX_MASK_NESTING_DEPTH = 128;
 
@@ -363,6 +364,10 @@ final class StructuralCommaSplitter
             }
 
             foreach ($openersByFirst[$chars[$i]] ?? [] as [$openChars, $close, $isSymmetric]) {
+                if ($depth >= self::MAX_MASK_NESTING_DEPTH) {
+                    break;
+                }
+
                 if (
                     $isSymmetric
                     && ! self::isTokenBoundary($chars[$i - 1] ?? null)
