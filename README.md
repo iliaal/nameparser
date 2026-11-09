@@ -231,6 +231,19 @@ if ($result['ambiguous']) {
 mixed-case input like `"Nguyen, Vi"` stays unflagged; the title-case `Vi`
 resolves to the given name.
 
+Parsed confidence is not an encoding-validity check. `parse()` scrubs malformed
+UTF-8 before saving the normalized source, so `getConfidence()` cannot report
+bytes that were replaced or removed. For example,
+`Confidence::assess("John Smith\xFF")` flags `input is not valid UTF-8`, but
+parsing that input and calling `getConfidence()` returns no ambiguity notes.
+Other name/credential ambiguity is still assessed after scrubbing.
+When malformed input must trigger review, check
+`mb_check_encoding($input, 'UTF-8')` before parsing, or call
+`Confidence::assess($input)` on the raw input. The latter still enforces the
+[input limits](#parsing-limits), including the size after UTF-8 substitution,
+and can throw instead of returning a confidence result. The replacement or
+removal behavior follows `mb_substitute_character()`, as described there.
+
 A suffix, nickname, or empty trailing comma does not settle a two-part
 salutation collision: `"Lord Ashcroft MD"`, `"Lord Ashcroft (Bob)"`, and
 `"Lord Ashcroft,"` are still flagged. An unattributed honorific connector in
