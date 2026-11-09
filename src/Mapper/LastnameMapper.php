@@ -150,7 +150,7 @@ class LastnameMapper extends AbstractMapper
 
             // Skip trailing punctuation placeholders; ordinary ASCII names avoid the regex.
             if (is_string($part)
-                && ($part === '' || ! ctype_alnum($part[0]))
+                && ($part === '' || ! str_contains('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', $part[0]))
                 && preg_match('/[\p{L}\p{N}]/u', $part) !== 1) {
                 continue;
             }

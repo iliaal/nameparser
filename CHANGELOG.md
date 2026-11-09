@@ -10,6 +10,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Tab-preserving control stripping no longer invokes a PHP callback for every control character. Empty-whitespace parsing and confidence assessment keep the same normalized output with less per-character overhead.
 - Simplify combined-initial detection by removing a redundant lowercase comparison after the uppercase check. Parsing behavior is unchanged.
+- Remove the undeclared ctype requirement from surname detection. Trailing punctuation-only and symbol-only tokens are now consistently skipped regardless of the process locale; Unicode letters and numbers are still retained.
 
 ### Fixed
 
