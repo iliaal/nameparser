@@ -424,6 +424,186 @@ class NicknameMapperTest extends AbstractMapperTestCase
         );
     }
 
+    /**
+     * @return iterable<string, array{array<string, string>, list<string>, list<string|Nickname>}>
+     */
+    public static function matchableAdjacentCloserProvider(): iterable
+    {
+        $pairs = [
+            'parenthesis' => ['(', ')'],
+            'bracket' => ['[', ']'],
+            'brace' => ['{', '}'],
+            'angle' => ['<', '>'],
+            ...iterator_to_array(self::asymmetricDelimiterProvider()),
+        ];
+        foreach ($pairs as $label => [$open, $close]) {
+            foreach (['asymmetric', 'symmetric'] as $enclosing) {
+                $outerOpen = $enclosing === 'symmetric' ? '"' : ($open === '(' ? '{' : '(');
+                $outerClose = $enclosing === 'symmetric' ? '"' : ($open === '(' ? '}' : ')');
+                $delimiters = [$outerOpen => $outerClose, $open => $close];
+                $prefix = $open . 'Bob';
+                $cases = [
+                    'embedded current closer' => [$prefix . $close . 'X', 'Robert'],
+                    'embedded future closer' => [$prefix, 'Rob' . $close . 'X', 'Robert'],
+                    'closer starts token' => [$prefix, $close . 'Robert'],
+                    'closer followed by punctuation before outer' => [$prefix . $close . ';'],
+                    'closer followed by period before outer' => [$prefix . $close . '.'],
+                    'owned closer' => [$prefix, $open . 'Rob' . $close, 'Robert'],
+                    'owned closer before outer on same token' => [$prefix, $open . 'Rob' . $close],
+                    'owned closer across tokens' => [$prefix, $open . 'Rob', 'Robert' . $close, 'Z'],
+                    'surplus owned closer' => [$prefix, $open . 'Rob' . $close . $close, 'Robert'],
+                    'later usable closer' => [$prefix . $close . 'X', 'Robert' . $close, 'Z'],
+                    'punctuated usable closer' => [$prefix . $close . ';', 'Robert'],
+                    'punctuated surplus closer' => [$prefix, $open . 'Rob' . $close . $close . ';', 'Robert'],
+                ];
+                foreach ($cases as $case => $values) {
+                    $tokens = $values;
+                    $tokens[0] = $outerOpen . $tokens[0];
+                    $tokens[count($tokens) - 1] .= $outerClose;
+                    yield $label . ' ' . $enclosing . ' ' . $case => [
+                        $delimiters,
+                        ['John', ...$tokens, 'Doe'],
+                        ['John', ...array_map(static fn(string $value): Nickname => new Nickname($value), $values), 'Doe'],
+                    ];
+                }
+            }
+        }
+        yield 'later candidate needs its own matchable lookahead' => [[],
+            ['John', '([Bob', '{[Rob]X', 'R}', 'R]', 'Z)', 'Doe'],
+            ['John', new Nickname('[Bob'), new Nickname('{[Rob]X'), new Nickname('R}'), new Nickname('R]'), new Nickname('Z'), 'Doe']];
+        yield 'unusable duplicate closer can recover a different enclosing pair' => [[],
+            ['John', '([(Bob)X', 'Rob]', 'Z)', 'Doe'],
+            ['John', new Nickname('[(Bob)X'), new Nickname('Rob]'), new Nickname('Z'), 'Doe']];
+        yield 'already consumed descendant survives later recovery' => [[],
+            ['John', '([(Bob)', '[Rob]', 'X)', 'Doe'],
+            ['John', new Nickname('[(Bob)'), new Nickname('[Rob]'), new Nickname('X'), 'Doe']];
+        yield 'recover future literal before protected ancestor closer' => [[],
+            ['John', '([(Bob', '{<X>X', 'Y}', 'Rob)', 'Z]', 'Q)', 'Doe'],
+            ['John', new Nickname('[(Bob'), new Nickname('{<X>X'), new Nickname('Y}'), new Nickname('Rob)'), new Nickname('Z]'), new Nickname('Q'), 'Doe']];
+        yield 'skip outer inferred but consume inner inferred' => [[],
+            ['John', '([{Bob}X]X', '<Rob>})', 'Doe'],
+            ['John', new Nickname('[{Bob}X]X'), new Nickname('<Rob>}'), 'Doe']];
+        yield 'skip inner inferred but consume outer inferred' => [[],
+            ['John', '([{Bob}X]X', '<Rob>])', 'Doe'],
+            ['John', new Nickname('[{Bob}X]X'), new Nickname('<Rob>]'), 'Doe']];
+        yield 'punctuation after recovered outer closer' => [[],
+            ['John', '([Bob]X', 'Robert);', 'Doe'],
+            ['John', new Nickname('[Bob]X'), new Nickname('Robert'), 'Doe']];
+        yield 'later balanced mixed descendants' => [[],
+            ['John', '([Bob', '[(Rob)', 'Z]]', 'Robert)', 'Doe'],
+            ['John', new Nickname('[Bob'), new Nickname('[(Rob)'), new Nickname('Z]]'), new Nickname('Robert'), 'Doe']];
+    }
+
+    /**
+     * @param array<string, string> $delimiters
+     * @param list<string> $input
+     * @param list<string|Nickname> $expected
+     */
+    #[DataProvider('matchableAdjacentCloserProvider')]
+    public function testAdjacentOpenersRequireConsumableClosers(array $delimiters, array $input, array $expected): void
+    {
+        $this->assertSame(
+            self::canonicalParts($expected),
+            self::canonicalParts((new NicknameMapper($delimiters))->map($input)),
+        );
+    }
+
+    public function testRecoveryRetainsConsumableSamePairNesting(): void
+    {
+        $this->assertSame(
+            ['John', '([Bob]X', 'Robert)', 'Doe'],
+            (new NicknameMapper())->map(['John', '(([Bob]X', 'Robert)', 'Doe']),
+        );
+        $this->assertSame(
+            self::canonicalParts(['John', new Nickname('([Bob]X'), new Nickname('Robert)'), new Nickname('Z'), 'Doe']),
+            self::canonicalParts((new NicknameMapper())->map(['John', '(([Bob]X', 'Robert)', 'Z)', 'Doe'])),
+        );
+    }
+
+    public function testRecoveryPreservesCustomSharedCloserDepth(): void
+    {
+        foreach ([
+            ['(' => ')', '[' => ')', '{' => '}'],
+            ['«' => '界»', '‹' => '界»', '[' => ']'],
+        ] as $delimiters) {
+            $openers = array_keys($delimiters);
+            $closers = array_values($delimiters);
+            $prefix = implode('', $openers) . 'Bob' . $closers[2] . 'X';
+            $inner = $openers[1] . $openers[2] . 'Bob' . $closers[2] . 'X';
+            $this->assertSame(
+                ['John', $inner, 'Robert' . $closers[1], 'Doe'],
+                (new NicknameMapper($delimiters))->map(['John', $prefix, 'Robert' . $closers[1], 'Doe']),
+            );
+            $this->assertSame(
+                self::canonicalParts(['John', new Nickname($inner), new Nickname('Robert' . $closers[1]), new Nickname('Z'), 'Doe']),
+                self::canonicalParts((new NicknameMapper($delimiters))->map(['John', $prefix, 'Robert' . $closers[1], 'Z' . $closers[0], 'Doe'])),
+            );
+        }
+    }
+
+    public function testRecoveryDoesNotTrimPunctuationAfterASymmetricCloser(): void
+    {
+        $mapper = new NicknameMapper();
+        $method = new \ReflectionMethod($mapper, 'closerCountSkippingAdjacent');
+        $stack = [
+            ['open' => '"', 'close' => '"', 'symmetric' => true],
+            ['open' => '(', 'close' => ')', 'symmetric' => false, 'adjacent' => true],
+            ['open' => '[', 'close' => ']', 'symmetric' => false, 'adjacent' => true],
+        ];
+        $this->assertSame(0, $method->invoke($mapper, 'Bob"', $stack, true));
+        $this->assertSame(3, $method->invoke($mapper, 'Bob"', $stack, false));
+    }
+
+    public function testRecoveryDeduplicatesOverlappingLongCloserOffsets(): void
+    {
+        $stack = [];
+        $suffix = '';
+        for ($i = 0; $i < 63; ++$i) {
+            // 31 distinct inferred pairs plus one mandatory pair fit the
+            // configured-pair limit, including a maximum-length closer.
+            $length = $i % 31 === 30 ? 64 : 2 * ($i % 31 + 1);
+            $closer = str_repeat('X', $length);
+            $stack[] = ['open' => 'o' . ($i % 31), 'close' => $closer, 'symmetric' => false, 'adjacent' => true];
+            $suffix .= $closer;
+        }
+        $stack[] = ['open' => 'z', 'close' => str_repeat('Y', 64), 'symmetric' => false];
+        $mapper = new NicknameMapper();
+        $method = new \ReflectionMethod($mapper, 'closerCountSkippingAdjacent');
+        $this->assertSame(0, $method->invoke($mapper, $suffix, $stack, false));
+        $this->assertSame(64, $method->invoke($mapper, str_repeat('Y', 64) . $suffix, $stack, false));
+    }
+
+    public function testRecoveryCannotDiscardAnOrdinaryTokenOpener(): void
+    {
+        $this->assertSame(
+            ['John', '[Bob]X', '{Rob', 'Robert}X)', 'Doe'],
+            (new NicknameMapper())->map(['John', '([Bob]X', '{Rob', 'Robert}X)', 'Doe']),
+        );
+        $this->assertSame(
+            ['John', '[Bob', '[Rob', 'Robert)', 'Doe'],
+            (new NicknameMapper())->map(['John', '([Bob', '[Rob', 'Robert)', 'Doe']),
+        );
+        $this->assertSame(
+            ['John', '[Bob]X', '{Rob', 'Robert)', 'Doe'],
+            (new NicknameMapper())->map(['John', '([Bob]X', '{Rob', 'Robert)', 'Doe']),
+        );
+    }
+
+    public function testCloserRecoveryDoesNotRetainPriorCallsOrSparseKeys(): void
+    {
+        $mapper = new NicknameMapper();
+        foreach ([
+            [2 => 'John', 8 => '([Bob', 12 => '[Rob]', 20 => 'Robert)', 100 => 'Doe'],
+            [1 => 'John', 9 => '([Bob', 11 => '[Rob]]', 25 => 'Robert)', 30 => 'Doe'],
+            [2 => 'John', 8 => '([Bob', 12 => '[Rob]', 20 => 'Robert)', 100 => 'Doe'],
+        ] as $parts) {
+            $this->assertSame(
+                self::canonicalParts((new NicknameMapper())->map($parts)),
+                self::canonicalParts($mapper->map($parts)),
+            );
+        }
+    }
+
     public function testEnclosingBoundaryAcceptsSparsePartKeys(): void
     {
         $this->assertSame(

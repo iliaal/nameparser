@@ -13,7 +13,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- Adjacent nested nickname openers no longer let an inner closer end the outer nickname, so `John ((Bob) Robert) Doe` keeps `(Bob) Robert` as the nickname instead of leaking `Robert)` into the middle name. Adjacent literal prefixes such as `<3` and `{Bob` remain nickname text when their closer never appears inside the nickname.
+- Adjacent nested nickname openers no longer let an inner closer end the outer nickname, so `John ((Bob) Robert) Doe` keeps `(Bob) Robert` as the nickname instead of leaking `Robert)` into the middle name. Adjacent literal prefixes such as `<3` and `{Bob` remain nickname text when their closer never appears inside the nickname before a distinct enclosing closer. If a suffix cannot close inferred nesting, the smallest number of unsupported adjacent prefixes stay literal while an enclosing closer is consumed. Separately-tokenized openers remain mandatory, already matched descendants are not reinterpreted, and incomplete same-pair spans still restore their ordinary name fields.
 - Parsing with an empty whitespace set no longer counts retained interior tabs as token boundaries, avoiding false token-limit errors while preserving the byte and actual-token limits.
 - Confidence no longer treats an unattributed configured honorific connector in a comma tail as evidence resolving a title/name collision; parsed fields are unchanged.
 - Confidence assessment enforces the byte limit after UTF-8 scrubbing as well as before it, matching parsing when malformed bytes expand through multibyte replacement characters.

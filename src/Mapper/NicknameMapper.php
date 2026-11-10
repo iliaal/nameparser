@@ -84,7 +84,7 @@ class NicknameMapper extends AbstractMapper
 
         $openingDelimiter = '';
 
-        /** @var list<array{open: string, close: string, symmetric: bool}> $delimiterStack */
+        /** @var list<array{open: string, close: string, symmetric: bool, adjacent?: bool}> $delimiterStack */
         $delimiterStack = [];
 
         /** @var array<string, true> $openSymmetric */
@@ -233,7 +233,7 @@ class NicknameMapper extends AbstractMapper
     }
 
     /**
-     * @param  list<array{open: string, close: string, symmetric: bool}>  $delimiterStack
+     * @param  list<array{open: string, close: string, symmetric: bool, adjacent?: bool}>  $delimiterStack
      * @param  PartArray  $parts
      */
     private function appendNestedOpeners(string $remaining, array &$delimiterStack, array $parts, int $openKey): void
@@ -315,6 +315,7 @@ class NicknameMapper extends AbstractMapper
 
         foreach (array_slice($nested, 0, $accepted) as $candidate) {
             unset($candidate['offset']);
+            $candidate['adjacent'] = true;
             $delimiterStack[] = $candidate;
         }
     }
@@ -378,7 +379,7 @@ class NicknameMapper extends AbstractMapper
     }
 
     /**
-     * @param  list<array{open: string, close: string, symmetric: bool}>  $delimiterStack
+     * @param  list<array{open: string, close: string, symmetric: bool, adjacent?: bool}>  $delimiterStack
      */
     private function matchingCloserCount(string $part, array $delimiterStack): int
     {
@@ -389,15 +390,78 @@ class NicknameMapper extends AbstractMapper
 
         // Asymmetric closers may carry punctuation; symmetric quotes must end the token.
         $trimmed = rtrim($part, '.,;:');
-        if ($trimmed === $part || $trimmed === '') {
-            return 0;
+        if ($trimmed !== $part && $trimmed !== '') {
+            $matches = $this->closerCountFor($trimmed, $delimiterStack, true);
+            if ($matches > 0) {
+                return $matches;
+            }
         }
 
-        return $this->closerCountFor($trimmed, $delimiterStack, true);
+        // A raw closer occurrence can make an adjacent prefix look nested even
+        // when no token suffix can consume it. Prefer ordinary closing above,
+        // then keep unsupported adjacent prefixes as literal nickname text.
+        $matches = $this->closerCountSkippingAdjacent($part, $delimiterStack, false);
+        if ($matches > 0 || $trimmed === $part || $trimmed === '') {
+            return $matches;
+        }
+        return $this->closerCountSkippingAdjacent($trimmed, $delimiterStack, true);
     }
 
     /**
-     * @param  list<array{open: string, close: string, symmetric: bool}>  $delimiterStack
+     * Match a closing suffix while allowing only inferred adjacent frames to
+     * stay literal. Ordinary token-initial openers are mandatory, even when an
+     * inferred frame lies below them, as in ([Bob [Rob]). Offset sets avoid
+     * enumerating subsets of the at-most-64-frame stack. With sanitized
+     * closers of at most 64 bytes, there are at most 4,097 offsets.
+     *
+     * @param list<array{open: string, close: string, symmetric: bool, adjacent?: bool}> $stack
+     */
+    private function closerCountSkippingAdjacent(string $part, array $stack, bool $asymmetricOnly): int
+    {
+        $depth = count($stack);
+        if ($depth < 2 || array_column($stack, 'adjacent') === []) {
+            return 0;
+        }
+        $top = $stack[$depth - 1];
+        if (! ($top['adjacent'] ?? false) && ! str_contains($part, $top['close'])) {
+            return 0;
+        }
+        $length = strlen($part);
+        // Prefer fewer discarded prefixes, then the outermost closing frame.
+        // Equal offsets have identical remaining work, so only their lowest
+        // score is needed. One discard outweighs every possible frame index.
+        $discardCost = self::MAX_NESTING_DEPTH + 1;
+        $positions = [];
+        foreach ($stack as $i => $delimiter) {
+            $next = [];
+            if ($delimiter['adjacent'] ?? false) {
+                foreach ($positions as $end => $score) {
+                    $next[$end] = $score + $discardCost;
+                }
+            }
+            $closer = $delimiter['close'];
+            $closerLength = strlen($closer);
+            if ($closerLength !== 0 && (! $asymmetricOnly || ! $delimiter['symmetric'])) {
+                foreach ($positions as $end => $score) {
+                    if ($end >= $closerLength
+                        && substr_compare($part, $closer, $end - $closerLength, $closerLength) === 0) {
+                        $offset = $end - $closerLength;
+                        $next[$offset] = min($next[$offset] ?? $score, $score);
+                    }
+                }
+                // A new candidate consumes its enclosing closer, never skips it.
+                if ($i < $depth - 1 && str_ends_with($part, $closer)) {
+                    $offset = $length - $closerLength;
+                    $next[$offset] = min($next[$offset] ?? $i, $i);
+                }
+            }
+            $positions = $next;
+        }
+        return $positions === [] ? 0 : $depth - (min($positions) % $discardCost);
+    }
+
+    /**
+     * @param  list<array{open: string, close: string, symmetric: bool, adjacent?: bool}>  $delimiterStack
      */
     private function closerCountFor(string $part, array $delimiterStack, bool $asymmetricOnly): int
     {

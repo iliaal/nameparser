@@ -4,6 +4,7 @@ namespace Tests\Iliaal\NameParser;
 
 use Iliaal\NameParser\Parser;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\DataProviderExternal;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -152,6 +153,55 @@ class UnclosedNicknameTest extends TestCase
             'given_name' => $first,
             'full_name' => $first . ' Doe',
         ], $name->toArray());
+    }
+
+    /**
+     * @param array<string, string> $delimiters
+     * @param list<string> $input
+     * @param list<string|\Iliaal\NameParser\Part\Nickname> $expected
+     */
+    #[DataProviderExternal(Mapper\NicknameMapperTest::class, 'matchableAdjacentCloserProvider')]
+    public function testMatchableCloserPreservesEveryNameField(array $delimiters, array $input, array $expected): void
+    {
+        $nickname = [];
+        foreach ($expected as $part) {
+            if ($part instanceof \Iliaal\NameParser\Part\Nickname) {
+                $nickname[] = $part->getValue();
+            }
+        }
+        $this->assertSame([
+            'salutation' => '',
+            'firstname' => 'John',
+            'initials' => '',
+            'middlename' => '',
+            'lastname_prefix' => '',
+            'lastname' => 'Doe',
+            'suffix' => '',
+            'nickname' => implode(' ', $nickname),
+            'given_name' => 'John',
+            'full_name' => 'John Doe',
+        ], (new Parser())->setNicknameDelimiters($delimiters)->parse(implode(' ', $input))->toArray());
+    }
+
+    public function testSamePairNestingAndIncompleteRestorationRemainIntentional(): void
+    {
+        foreach (['(' => ')', '[' => ']', '{' => '}', '<' => '>'] as $open => $close) {
+            $prefix = $open . $open . 'Bob' . $close;
+            $name = (new Parser())->parse('John ' . $prefix . ' Doe');
+            $this->assertSame('', $name->getNickname());
+            $this->assertSame($open . 'Bob' . $close, $name->getMiddlename());
+            $this->assertSame('Doe', $name->getLastname());
+
+            $name = (new Parser())->parse('John ' . $prefix . ' Doe Smith' . $close);
+            $this->assertSame($open . 'Bob' . $close . ' Doe Smith', $name->getNickname());
+            $this->assertSame('', $name->getMiddlename());
+            $this->assertSame('', $name->getLastname());
+
+            $name = (new Parser())->parse('John ' . $prefix . ' Doe ' . $open . 'Bobby' . $close);
+            $this->assertSame('', $name->getNickname());
+            $this->assertSame($open . 'Bob' . $close . ' Doe', $name->getMiddlename());
+            $this->assertSame($open . 'Bobby' . $close, $name->getLastname());
+        }
     }
 
     public function testClosedNicknameStillExtracted(): void
