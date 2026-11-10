@@ -43,9 +43,9 @@ class NicknameMapper extends AbstractMapper
     private array $lastCloserIndex = [];
 
     /**
-     * @var array<string, int|null> Last token containing each adjacent asymmetric closer.
+     * @var array<string, array{int, int}|null> Next future token and byte offset for each closer.
      */
-    private array $lastNestedCloserIndex = [];
+    private array $nextNestedCloserPosition = [];
 
     private string $quoteTrimCharacters = '';
 
@@ -80,7 +80,7 @@ class NicknameMapper extends AbstractMapper
         }
 
         $this->lastCloserIndex = [];
-        $this->lastNestedCloserIndex = [];
+        $this->nextNestedCloserPosition = [];
 
         $openingDelimiter = '';
 
@@ -238,41 +238,133 @@ class NicknameMapper extends AbstractMapper
      */
     private function appendNestedOpeners(string $remaining, array &$delimiterStack, array $parts, int $openKey): void
     {
-        while (count($delimiterStack) < self::MAX_NESTING_DEPTH
-            && preg_match($this->regexp, $remaining, $matches)) {
+        $prefix = $remaining;
+        $offset = 0;
+        /** @var list<array{open: string, close: string, symmetric: bool, offset: int}> $nested */
+        $nested = [];
+        while (count($delimiterStack) + count($nested) < self::MAX_NESTING_DEPTH
+            && preg_match($this->regexp, $prefix, $matches)) {
             $open = $matches[1];
             $close = $this->delimiters[$open] ?? '';
+            $parentClose = $nested === []
+                ? $delimiterStack[count($delimiterStack) - 1]['close']
+                : $nested[count($nested) - 1]['close'];
 
             // Closers take precedence over overlapping custom openers.
             // Quotes must start a token, and custom regex captures must be
             // configured, nonempty prefixes before consuming another opener.
-            if (str_starts_with($remaining, $delimiterStack[count($delimiterStack) - 1]['close'])
+            if (str_starts_with($prefix, $parentClose)
                 || $open === '' || $close === '' || $open === $close
-                || ! str_starts_with($remaining, $open)) {
+                || ! str_starts_with($prefix, $open)) {
                 break;
             }
 
-            // A literal prefix such as <3 or {Bob must not prevent the outer
-            // nickname from closing when the inner closer never appears.
-            if (! str_contains(self::stripOpener($remaining, $open), $close)) {
-                if (! array_key_exists($close, $this->lastNestedCloserIndex)) {
-                    $last = null;
-                    foreach ($parts as $k => $part) {
-                        if (is_string($part) && str_contains($part, $close)) {
-                            $last = $k;
-                        }
+            $offset += strlen($open);
+            $nested[] = ['open' => $open, 'close' => $close, 'symmetric' => false, 'offset' => $offset];
+            $prefix = self::stripOpener($prefix, $open);
+        }
+
+        // Validate inside out: a descendant may consume an enclosing closer,
+        // as the inner parentheses do in ([(Bob) Robert] Z).
+        $accepted = count($nested);
+        $after = null;
+        for ($i = count($nested) - 1; $i >= 0; --$i) {
+            $candidate = $nested[$i];
+            $start = $after ?? [$openKey, $candidate['offset']];
+            $innerPosition = $this->nextNestedCloser($parts, $openKey, $remaining, $candidate['close'], $start);
+
+            // Identical closers still imply nesting when the outer span is
+            // incomplete, preserving restoration of inputs such as (((Bob).
+            if ($innerPosition === null && $i + 1 < $accepted
+                && $candidate['close'] === $nested[$i + 1]['close']) {
+                $innerPosition = $this->nextNestedCloser(
+                    $parts,
+                    $openKey,
+                    $remaining,
+                    $candidate['close'],
+                    [$openKey, $candidate['offset']],
+                );
+            }
+
+            if ($innerPosition !== null) {
+                foreach (array_merge($delimiterStack, array_slice($nested, 0, $i)) as $enclosing) {
+                    if ($enclosing['close'] === $candidate['close']) {
+                        continue;
                     }
-                    $this->lastNestedCloserIndex[$close] = $last;
-                }
-                $last = $this->lastNestedCloserIndex[$close];
-                if ($last === null || $last <= $openKey) {
-                    break;
+
+                    $outerPosition = $this->nextNestedCloser($parts, $openKey, $remaining, $enclosing['close'], $start);
+                    if ($outerPosition !== null
+                        && ($innerPosition[0] > $outerPosition[0]
+                            || ($innerPosition[0] === $outerPosition[0]
+                                && $innerPosition[1] + strlen($candidate['close']) > $outerPosition[1]))) {
+                        $innerPosition = null;
+
+                        break;
+                    }
                 }
             }
 
-            $delimiterStack[] = ['open' => $open, 'close' => $close, 'symmetric' => false];
-            $remaining = self::stripOpener($remaining, $open);
+            if ($innerPosition === null) {
+                $accepted = $i;
+                $after = null;
+            } else {
+                $end = [$innerPosition[0], $innerPosition[1] + strlen($candidate['close'])];
+                $after = $after === null || $end > $after ? $end : $after;
+            }
         }
+
+        foreach (array_slice($nested, 0, $accepted) as $candidate) {
+            unset($candidate['offset']);
+            $delimiterStack[] = $candidate;
+        }
+    }
+
+    /**
+     * Cache the next future occurrence from the current opening token. Searches
+     * after a matched descendant are local to the bounded adjacent opener chain.
+     *
+     * @param  PartArray  $parts
+     * @param  array{int, int}  $start
+     * @return array{int, int}|null
+     */
+    private function nextNestedCloser(array $parts, int $openKey, string $remaining, string $closer, array $start): ?array
+    {
+        if ($start[0] === $openKey) {
+            $offset = strpos($remaining, $closer, $start[1]);
+            if ($offset !== false) {
+                return [$openKey, $offset];
+            }
+
+            if (array_key_exists($closer, $this->nextNestedCloserPosition)) {
+                $next = $this->nextNestedCloserPosition[$closer];
+                if ($next === null || $next[0] > $openKey) {
+                    return $next;
+                }
+            }
+        }
+
+        $total = count($parts);
+        for ($i = max($openKey + 1, $start[0]); $i < $total; ++$i) {
+            if (! is_string($parts[$i])) {
+                continue;
+            }
+
+            $offset = strpos($parts[$i], $closer, $i === $start[0] ? $start[1] : 0);
+            if ($offset !== false) {
+                $next = [$i, $offset];
+                if ($start[0] === $openKey) {
+                    $this->nextNestedCloserPosition[$closer] = $next;
+                }
+
+                return $next;
+            }
+        }
+
+        if ($start[0] === $openKey) {
+            $this->nextNestedCloserPosition[$closer] = null;
+        }
+
+        return null;
     }
 
     private static function stripOpener(string $part, string $opener): string

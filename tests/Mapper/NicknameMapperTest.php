@@ -274,7 +274,7 @@ class NicknameMapperTest extends AbstractMapperTestCase
         yield 'unclosed outer span' => [[], ['John', '((Bob)', 'Smith'],
             ['John', '(Bob)', 'Smith']];
         yield 'mismatched inner closer' => [[], ['John', '([Bob)', 'Robert]', 'Doe'],
-            ['John', '[Bob)', 'Robert]', 'Doe']];
+            ['John', new Nickname('[Bob'), 'Robert]', 'Doe']];
         yield 'punctuation after inner closer' => [[], ['John', '((Bob);', 'Robert)', 'Doe'],
             ['John', new Nickname('(Bob);'), new Nickname('Robert'), 'Doe']];
         yield 'inner quote remains decoration' => [[], ['John', '("Bob', 'Robert")', 'Doe'],
@@ -338,6 +338,121 @@ class NicknameMapperTest extends AbstractMapperTestCase
             self::canonicalParts($expected),
             self::canonicalParts((new NicknameMapper($delimiters))->map($input)),
         );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, string>, list<string>, list<string|Nickname>}>
+     */
+    public static function enclosingBoundaryProvider(): iterable
+    {
+        $pairs = [
+            'parenthesis' => ['(', ')'],
+            'bracket' => ['[', ']'],
+            'brace' => ['{', '}'],
+            'angle' => ['<', '>'],
+            ...iterator_to_array(self::asymmetricDelimiterProvider()),
+        ];
+        foreach ($pairs as $label => [$open, $close]) {
+            $outerOpen = $open === '(' ? '{' : '(';
+            $outerClose = $open === '(' ? '}' : ')';
+            $delimiters = [$outerOpen => $outerClose, $open => $close];
+            $literal = $open . 'Bób';
+            yield $label . ' closer after span' => [$delimiters,
+                ['John', $outerOpen . $literal . $outerClose, 'Doe', $open . 'Bobby' . $close],
+                ['John', new Nickname($literal), 'Doe', new Nickname('Bobby')]];
+            yield $label . ' closer after multi-token span' => [$delimiters,
+                ['John', $outerOpen . $literal, 'Robert' . $outerClose, 'Doe', $open . 'Bobby' . $close],
+                ['John', new Nickname($literal), new Nickname('Robert'), 'Doe', new Nickname('Bobby')]];
+            yield $label . ' closer before and after span' => [$delimiters,
+                ['Earlier' . $close, 'John', $outerOpen . $literal . $outerClose, 'Doe', 'Later' . $close],
+                ['Earlier' . $close, 'John', new Nickname($literal), 'Doe', 'Later' . $close]];
+            yield $label . ' inner before outer in same token' => [$delimiters,
+                ['John', $outerOpen . $literal . $close . $outerClose, 'Doe'],
+                ['John', new Nickname($literal . $close), 'Doe']];
+            yield $label . ' outer before inner in same token' => [$delimiters,
+                ['John', $outerOpen . $literal . $outerClose . $close . 'tail' . $outerClose, 'Doe'],
+                ['John', new Nickname($literal . $outerClose . $close . 'tail'), 'Doe']];
+            yield $label . ' future same-token order' => [$delimiters,
+                ['John', $outerOpen . $literal, 'Robert' . $outerClose . $close . 'tail' . $outerClose, 'Doe'],
+                ['John', new Nickname($literal), new Nickname('Robert' . $outerClose . $close . 'tail'), 'Doe']];
+            yield $label . ' descendant consumes enclosing closer' => [$delimiters,
+                ['John', $outerOpen . $open . $outerOpen . 'Bób' . $outerClose, 'Robert' . $close, 'Z' . $outerClose, 'Doe'],
+                ['John', new Nickname($open . $outerOpen . 'Bób' . $outerClose), new Nickname('Robert' . $close), new Nickname('Z'), 'Doe']];
+            yield $label . ' balanced same-closer nesting' => [[$open => $close],
+                ['John', $open . $literal . $close, 'Robert' . $close, 'Doe'],
+                ['John', new Nickname($literal . $close), new Nickname('Robert'), 'Doe']];
+        }
+        yield 'parent-like literal within word' => [[],
+            ['John', '([Smith)son', 'Bob]', 'Robert)', 'Doe'],
+            ['John', new Nickname('[Smith)son'), new Nickname('Bob]'), new Nickname('Robert'), 'Doe']];
+        yield 'parent-like punctuation within word' => [[],
+            ['John', '([Smith);son', 'Bob]', 'Robert)', 'Doe'],
+            ['John', new Nickname('[Smith);son'), new Nickname('Bob]'), new Nickname('Robert'), 'Doe']];
+        yield 'unclosed identical triple nesting' => [[],
+            ['John', '(((Bob)', 'Doe'], ['John', '((Bob)', 'Doe']];
+        yield 'all enclosing spans bound a candidate' => [[],
+            ['John', '([<Bob)', 'Robert>]', 'Doe'],
+            ['John', new Nickname('[<Bob'), 'Robert>]', 'Doe']];
+        yield 'ambiguous mixed nesting uses first distinct boundary' => [[],
+            ['John', '([Bob)', 'Robert]', 'Z)', 'Doe'],
+            ['John', new Nickname('[Bob'), 'Robert]', 'Z)', 'Doe']];
+        yield 'distinct overlapping closers stay literal' => [['(' => '>>', '[' => '>'],
+            ['John', '([Bob>>>', 'Doe'],
+            ['John', new Nickname('[Bob>'), 'Doe']];
+        yield 'multibyte distinct overlapping closers stay literal' => [['«' => '界»', '‹' => '界'],
+            ['John', '«‹Bób界»', 'Doe'],
+            ['John', new Nickname('‹Bób'), 'Doe']];
+        yield 'closer within consumed opener is not future' => [['(' => ')', 'ab' => 'a'],
+            ['John', '(abBob)', 'Doe'],
+            ['John', new Nickname('abBob'), 'Doe']];
+        yield 'symmetric enclosing boundary' => [['"' => '"', '(' => ')'],
+            ['John', '"(Bob"', 'Doe', '(Bobby)'],
+            ['John', new Nickname('(Bob'), 'Doe', new Nickname('Bobby')]];
+    }
+
+    /**
+     * @param  array<string, string>  $delimiters
+     * @param  list<string>  $input
+     * @param  list<string|Nickname>  $expected
+     */
+    #[DataProvider('enclosingBoundaryProvider')]
+    public function testAdjacentOpenersStayInsideEnclosingBoundary(array $delimiters, array $input, array $expected): void
+    {
+        $this->assertSame(
+            self::canonicalParts($expected),
+            self::canonicalParts((new NicknameMapper($delimiters))->map($input)),
+        );
+    }
+
+    public function testEnclosingBoundaryAcceptsSparsePartKeys(): void
+    {
+        $this->assertSame(
+            self::canonicalParts(['John', new Nickname('[Bob'), 'Doe', new Nickname('Bobby')]),
+            self::canonicalParts((new NicknameMapper())->map([10 => 'John', 40 => '([Bob)', 70 => 'Doe', 100 => '[Bobby]'])),
+        );
+    }
+
+    public function testForwardCloserCacheAdvancesAcrossSpansAndResetsBetweenCalls(): void
+    {
+        $mapper = new NicknameMapper();
+        $this->assertSame(['John', '(Bob', 'Smith'], $mapper->map(['John', '((Bob', 'Smith']));
+        $this->assertSame(
+            self::canonicalParts(['John', new Nickname('(Bob'), new Nickname('Robert)'), new Nickname('Z'), 'Doe']),
+            self::canonicalParts($mapper->map(['John', '((Bob', 'Robert)', 'Z)', 'Doe'])),
+        );
+        foreach ([
+            [
+                ['John', '([Bob', 'Robert])', '([Rob)', 'Doe', '[Robert]'],
+                ['John', new Nickname('[Bob'), new Nickname('Robert]'), new Nickname('[Rob'), 'Doe', new Nickname('Robert')],
+            ],
+            [['John', '((Bob', 'Smith'], ['John', '(Bob', 'Smith']],
+            [
+                ['John', '((Bob', 'Robert)', 'Z)', 'Doe'],
+                ['John', new Nickname('(Bob'), new Nickname('Robert)'), new Nickname('Z'), 'Doe'],
+            ],
+        ] as [$input, $expected]) {
+            $this->assertSame(self::canonicalParts($expected), self::canonicalParts($mapper->map($input)));
+        }
     }
 
     public function testAdjacentCloserCacheIsResetBetweenCalls(): void

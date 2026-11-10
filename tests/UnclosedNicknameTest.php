@@ -83,7 +83,7 @@ class UnclosedNicknameTest extends TestCase
         yield 'punctuation after inner closer' => ['John ((Bob); Robert) Doe', '(Bob); Robert', '', 'John', []];
         yield 'empty nested nickname' => ['John (() ) Doe', '()', '', 'John', []];
         yield 'unclosed span' => ['John ((Bob) Robert Doe', '', '(Bob) Robert', 'John (Bob) Robert', []];
-        yield 'mismatched closer' => ['John ([Bob) Robert] Doe', '', '[Bob) Robert]', 'John [Bob) Robert]', []];
+        yield 'mismatched closer' => ['John ([Bob) Robert] Doe', '[Bob', 'Robert]', 'John Robert]', []];
         yield 'unclosed asymmetric span inside a quote' => ['John "(Bob Robert" Doe', '(Bob Robert', '', 'John', []];
         yield 'custom longest opener' => ['John <<<<Bob>> Robert>> Doe', '<<Bob>> Robert', '', 'John', ['<' => '>', '<<' => '>>']];
         yield 'Unicode pair' => ['John ««Bób» Robert» Doe', '«Bób» Robert', '', 'John', ['«' => '»']];
@@ -113,6 +113,45 @@ class UnclosedNicknameTest extends TestCase
             'given_name' => $given,
             'full_name' => $given . ' Doe',
         ], $parser->parse($input)->toArray());
+    }
+
+    /**
+     * @return iterable<string, array{string, string, string, array<string, string>}>
+     */
+    public static function nicknameAfterEnclosingSpanProvider(): iterable
+    {
+        yield 'reported heart' => ['Jane (<3) Doe <Janie>', 'Jane', '<3 Janie', []];
+        yield 'reported brace' => ['John ({Bob) Doe {Bobby}', 'John', '{Bob Bobby', []];
+        foreach (Mapper\NicknameMapperTest::enclosingBoundaryProvider() as $label => [$delimiters, $input, $expected]) {
+            if (! str_ends_with($label, ' closer after span')) {
+                continue;
+            }
+            if (! $expected[1] instanceof \Iliaal\NameParser\Part\Nickname) {
+                throw new \LogicException('Expected a nickname fixture.');
+            }
+            yield $label => [implode(' ', $input), 'John', $expected[1]->getValue() . ' Bobby', $delimiters];
+        }
+    }
+
+    /**
+     * @param  array<string, string>  $delimiters
+     */
+    #[DataProvider('nicknameAfterEnclosingSpanProvider')]
+    public function testLaterNicknameDoesNotStealSurname(string $input, string $first, string $nickname, array $delimiters): void
+    {
+        $name = (new Parser())->setNicknameDelimiters($delimiters)->parse($input);
+        $this->assertSame([
+            'salutation' => '',
+            'firstname' => $first,
+            'initials' => '',
+            'middlename' => '',
+            'lastname_prefix' => '',
+            'lastname' => 'Doe',
+            'suffix' => '',
+            'nickname' => $nickname,
+            'given_name' => $first,
+            'full_name' => $first . ' Doe',
+        ], $name->toArray());
     }
 
     public function testClosedNicknameStillExtracted(): void
