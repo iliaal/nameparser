@@ -17,6 +17,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Parsing with an empty whitespace set no longer counts retained interior tabs as token boundaries, avoiding false token-limit errors while preserving the byte and actual-token limits.
 - Confidence no longer treats an unattributed configured honorific connector in a comma tail as evidence resolving a title/name collision; parsed fields are unchanged.
 - Confidence assessment enforces the byte limit after UTF-8 scrubbing as well as before it, matching parsing when malformed bytes expand through multibyte replacement characters.
+- Structural comma shielding now applies the same 128-span nesting limit with multi-character or multibyte nickname delimiters as with single-byte delimiters. An unused multibyte pair no longer changes comma boundaries for deeply nested ASCII spans below the existing 4,096-byte cutoff.
 
 ## [1.7.0] - 2026-10-26
 
