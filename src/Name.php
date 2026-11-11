@@ -218,9 +218,11 @@ class Name
      * nickname-delimiter/whitespace/connector configuration the parser saw. Read-only;
      * parse() is unaffected.
      *
-     * A manually constructed Name falls back to its rendered string with the
-     * default configuration. That string has normalized casing, so it rarely
-     * flags uniform-case ambiguity; parse via Parser when that signal matters.
+     * Editing parts does not replace the saved source or token snapshot. Without
+     * a source, a manually constructed Name falls back to its rendered string,
+     * still honoring its supplied confidence configuration. Rendering can change
+     * casing and lose comma structure; parse via Parser when the
+     * original input's ambiguity matters.
      *
      * @return array{ambiguous: bool, notes: list<string>}
      */
@@ -370,6 +372,8 @@ class Name
      *
      * Returns a Name so the caller decides between "Mrs. Smith" and
      * "Mrs. Brad Smith". Titles beyond the second addressee are not reachable.
+     * A parsed name's partner retains its source and confidence tokens, so its
+     * confidence describes the original input, not just the partner's display.
      */
     public function getPartner(): ?Name
     {
