@@ -340,7 +340,11 @@ final class Text
      */
     public static function isUpperCase(string $word): bool
     {
-        return self::analyzeToken($word)['upper'];
+        $letters = self::letters($word);
+
+        return $letters !== ''
+            && $letters === mb_strtoupper($letters, 'UTF-8')
+            && $letters !== mb_strtolower($letters, 'UTF-8');
     }
 
     /**
@@ -348,7 +352,11 @@ final class Text
      */
     public static function isLowerCase(string $word): bool
     {
-        return self::analyzeToken($word)['lower'];
+        $letters = self::letters($word);
+
+        return $letters !== ''
+            && $letters === mb_strtolower($letters, 'UTF-8')
+            && $letters !== mb_strtoupper($letters, 'UTF-8');
     }
 
     /**
@@ -357,7 +365,10 @@ final class Text
      */
     public static function isCased(string $word): bool
     {
-        return self::analyzeToken($word)['cased'];
+        $letters = self::letters($word);
+
+        return $letters !== ''
+            && mb_strtoupper($letters, 'UTF-8') !== mb_strtolower($letters, 'UTF-8');
     }
 
     /**
