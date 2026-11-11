@@ -255,7 +255,7 @@ class Parser
         if (! $uniformUpper && ! $this->surnameFirst && $this->isUnknownCredentialTail($givenParts)) {
             $western = $this->getFirstSegmentParser()->parseNormalizedSegment($surname);
 
-            if ($this->hasGivenNameParts($western)) {
+            if ($this->hasGivenNameParts($western) && ! $this->leadsWithLastnamePrefix($western)) {
                 return $this->makeName(array_merge(
                     $western->getParts(),
                     $this->creditTailParts($givenParts),
@@ -520,6 +520,21 @@ class Parser
     private function creditTailParts(array $givenParts): array
     {
         return $this->commaCredentialTail()->creditParts($givenParts);
+    }
+
+    /**
+     * A Western reading whose first name is a surname particle ("Van Horn")
+     * shows the left side is a bare surname, so the comma tail is its given name.
+     */
+    private function leadsWithLastnamePrefix(Name $name): bool
+    {
+        foreach ($name->getParts() as $part) {
+            if ($part instanceof Firstname) {
+                return array_key_exists(Text::key($part->getValue()), $this->getPrefixes());
+            }
+        }
+
+        return false;
     }
 
     protected function hasGivenNameParts(Name $name): bool

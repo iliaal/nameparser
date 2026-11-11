@@ -88,6 +88,9 @@ class CredentialCollisionTest extends TestCase
             'comma unknown credential, middle name' => ['Scott Kay Andersen, LCPC', 'Scott', 'Andersen', 'LCPC'],
             'comma spaced credential remainder'   => ['Lori Shelley, PHARM D', 'Lori', 'Shelley', 'PHARM D'],
             'comma credential with registration'  => ['Leon Ellerb, OTA/L 2838', 'Leon', 'Ellerb', 'OTA/L 2838'],
+            'comma unknown credential, particle surname' => ['Jan de Vries, LMHP', 'Jan', 'de Vries', 'LMHP'],
+            'comma pronounceable caps tail reads as credential' => ['Smith Jones, MARY', 'Smith', 'Jones', 'MARY'],
+            'comma particle surname keeps caps given name' => ['Van Horn, MARIA', 'Maria', 'van Horn', ''],
 
             'comma given name stays given, caps'  => ['Smith, JOHN, MD', 'John', 'Smith', 'MD'],
             'comma given name stays given'        => ['Hidalgo Castillo, Maria', 'Maria', 'Hidalgo Castillo', ''],

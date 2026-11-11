@@ -25,6 +25,9 @@ class ConfidenceTest extends TestCase
             'all caps comma, VI collides'  => ['NGUYEN, VI'],
             'all caps surname-collider II'  => ['JOHN SMITH II'],
             'all caps surname-collider MBA' => ['JANE DOE MBA'],
+            'caps name after comma'         => ['Rowan Ellery, NGUYEN'],
+            'caps name after particle surname' => ['Van Horn, MARIA'],
+            'pronounceable unknown credential' => ['John Smith, FACS'],
         ];
     }
 
@@ -41,6 +44,10 @@ class ConfidenceTest extends TestCase
             'plain name'               => ['John Doe'],
             'all-caps credential RN'   => ['DONNA BARRETT, RN'],
             'all-caps credential PT'   => ['MARY JONES, PT'],
+            'vowel-less unknown credential' => ['Christina Nemec, LMHP'],
+            'unpronounceable comma tail'    => ['Rowan Ellery, QZX'],
+            'single surname, caps given'    => ['Nguyen, MARIA'],
+            'title-case given after comma'  => ['Rowan Ellery, Maria'],
         ];
     }
 

@@ -450,6 +450,15 @@ name. Prefer the known credential first when the unknown stands alone
 with no case signal, an unknown token could equally be a surname, so it stays in
 the name.
 
+A comma followed by one unknown all-caps word is read as a credential when the
+left side is a full name: `Christina Nemec, LMHP` gives first `Christina`, last
+`Nemec`, and suffix `LMHP`. An all-caps given name after a two-word surname has
+the same shape, so `Rowan Ellery, NGUYEN` gives first `Rowan` and suffix
+`NGUYEN`. When the word contains a vowel or a non-ASCII letter,
+`getConfidence()` flags the row for review. A left side that starts with a
+surname particle is read as a bare surname: `Van Horn, MARIA` keeps first
+`Maria` and last `van Horn`.
+
 `getFullName()` and `toArray()['full_name']` are the given name plus surname only
 (no salutation, nickname, or suffix). `__toString()` is the richer display line
 from `getAll(true)` (salutation through suffix, nickname wrapped). Both drop
