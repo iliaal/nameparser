@@ -231,6 +231,20 @@ if ($result['ambiguous']) {
 mixed-case input like `"Nguyen, Vi"` stays unflagged; the title-case `Vi`
 resolves to the given name.
 
+Editing a parsed `Name` through its parts or `setParts()` does not update the
+saved source or confidence tokens. `getConfidence()` still assesses that
+original input, and `getPartner()` carries the same confidence provenance.
+Parse a revised input string when you need confidence for an edited name.
+
+A manually constructed `Name` without `setSource()` assesses its rendered
+`(string) $name` instead. Rendering can change casing and lose comma
+structure, so it can give a different confidence result from the original
+input. Supplied confidence dictionaries, nickname delimiters, whitespace and
+connectors are still honored; manual construction does not force defaults.
+`setSource($source, $tokens)` replaces the stored source and token snapshot.
+Omitting `$tokens` clears any previous snapshot and tokenizes the new source
+when confidence is requested.
+
 Parsed confidence is not an encoding-validity check. `parse()` scrubs malformed
 UTF-8 before saving the normalized source, so `getConfidence()` cannot report
 bytes that were replaced or removed. For example,
