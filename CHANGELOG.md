@@ -6,8 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-11-11
+
 ### Changed
 
+- Document in the README that parsed confidence is not an encoding-validity check (`parse()` scrubs malformed UTF-8 first; call `Confidence::assess()` on the raw input or `mb_check_encoding()` when malformed bytes must trigger review), and that editing a parsed `Name` or building one by hand does not change which input `getConfidence()` assesses. Parsing behavior is unchanged.
 - Scalar text-case predicates no longer build a full token-analysis array. Uppercase and lowercase checks also skip the opposite case conversion when the requested case already differs; their Unicode casing behavior is unchanged.
 - Tab-preserving control stripping no longer invokes a PHP callback for every control character. Empty-whitespace parsing and confidence assessment keep the same normalized output with less per-character overhead.
 - Simplify combined-initial detection by removing a redundant lowercase comparison after the uppercase check. Parsing behavior is unchanged.
@@ -267,7 +270,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `setWhitespace()` now trims the configured characters from the edges of the input.
 - `setMaxSalutationIndex()` larger than the token count no longer emits undefined-array-key warnings.
 
-[Unreleased]: https://github.com/iliaal/nameparser/compare/1.7.0...HEAD
+[Unreleased]: https://github.com/iliaal/nameparser/compare/1.7.1...HEAD
+[1.7.1]: https://github.com/iliaal/nameparser/compare/1.7.0...1.7.1
 [1.7.0]: https://github.com/iliaal/nameparser/compare/1.6.0...1.7.0
 [1.6.0]: https://github.com/iliaal/nameparser/compare/1.5.0...1.6.0
 [1.5.0]: https://github.com/iliaal/nameparser/compare/1.4.1...1.5.0
