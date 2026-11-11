@@ -104,13 +104,6 @@ class Confidence
             }
         }
 
-        if (! $uniformUpper && ! $uniformLower) {
-            $tailNote = self::nameShapedCommaTailNote($normalized, $suffixes, $nicknameDelimiters);
-            if ($tailNote !== null) {
-                $notes[$tailNote] = true;
-            }
-        }
-
         $lead = $tokens[0] ?? '';
         $key = Text::key($lead);
         if ($lead !== ''
@@ -552,55 +545,6 @@ class Confidence
         }
 
         return false;
-    }
-
-    /**
-     * "Rowan Ellery, NGUYEN" and "Christina Nemec, LMHP" share one shape: a
-     * Western name, a comma, and one all-caps word outside the dictionary. The
-     * parser reads that word as a credential, which loses a given name when it
-     * is one, so a pronounceable word (one with a vowel or a non-ASCII letter)
-     * is flagged.
-     *
-     * @param  array<int|string, string>|null  $suffixes
-     * @param  array<string, string>|null  $nicknameDelimiters
-     */
-    private static function nameShapedCommaTailNote(
-        string $normalized,
-        ?array $suffixes,
-        ?array $nicknameDelimiters,
-    ): ?string {
-        if (! str_contains($normalized, ',')) {
-            return null;
-        }
-
-        $segments = StructuralCommaSplitter::split($normalized, self::delimiters($nicknameDelimiters));
-        if (count($segments) !== 2) {
-            return null;
-        }
-
-        $tail = self::tokenizeWords($segments[1]);
-        if (count($tail) !== 1) {
-            return null;
-        }
-
-        $token = $tail[0];
-        if (! Text::isUnknownCredentialCandidate($token)
-            || array_key_exists(Text::key($token), $suffixes ?? English::SUFFIXES)
-            || preg_match('/^\p{L}+$/u', $token) !== 1
-            || preg_match('/[aeiouy]|[^\x00-\x7F]/i', $token) !== 1) {
-            return null;
-        }
-
-        ['suffix' => $suffixMapper, 'nickname' => $nicknameMapper] = AbstractMapper::decorationAnalyzers(
-            $suffixes ?? English::SUFFIXES,
-            self::delimiters($nicknameDelimiters),
-        );
-        $surnameParts = $suffixMapper->map($nicknameMapper->map(self::tokenizeWords($segments[0])));
-        if (count(self::rawNameTokens($surnameParts)) < 2) {
-            return null;
-        }
-
-        return "'{$token}' could be a given name or a credential after the comma";
     }
 
     /**
