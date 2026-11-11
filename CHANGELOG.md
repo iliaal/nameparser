@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.7.3] - 2026-11-11
+
+### Fixed
+
+- `Confidence` no longer flags a comma tail that is a single unknown all-caps word with a vowel or a non-ASCII letter (`Pamela Simon, COTA`), reverting the 1.7.2 note. Over 30,000 NPPES rows every flagged row was a correctly parsed credential, and callers that treat `ambiguous` as a possible lost surname re-split those rows. Parsed fields are unchanged, and the 1.7.2 particle-surname fix (`Van Horn, MARIA`) stays.
+
 ## [1.7.2] - 2026-11-11
 
 ### Fixed
@@ -277,7 +283,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `setWhitespace()` now trims the configured characters from the edges of the input.
 - `setMaxSalutationIndex()` larger than the token count no longer emits undefined-array-key warnings.
 
-[Unreleased]: https://github.com/iliaal/nameparser/compare/1.7.2...HEAD
+[Unreleased]: https://github.com/iliaal/nameparser/compare/1.7.3...HEAD
+[1.7.3]: https://github.com/iliaal/nameparser/compare/1.7.2...1.7.3
 [1.7.2]: https://github.com/iliaal/nameparser/compare/1.7.1...1.7.2
 [1.7.1]: https://github.com/iliaal/nameparser/compare/1.7.0...1.7.1
 [1.7.0]: https://github.com/iliaal/nameparser/compare/1.6.0...1.7.0
