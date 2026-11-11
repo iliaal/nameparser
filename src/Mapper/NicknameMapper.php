@@ -43,7 +43,7 @@ class NicknameMapper extends AbstractMapper
     private array $lastCloserIndex = [];
 
     /**
-     * @var array<string, array{int, int}|null> Next future token and byte offset for each closer.
+     * @var array<string, array{int, int}|null> Next future token and byte offset for each closer and boundary-search mode.
      */
     private array $nextNestedCloserPosition = [];
 
@@ -84,7 +84,7 @@ class NicknameMapper extends AbstractMapper
 
         $openingDelimiter = '';
 
-        /** @var list<array{open: string, close: string, symmetric: bool, adjacent?: bool}> $delimiterStack */
+        /** @var list<array{open: string, close: string, symmetric: bool, adjacent?: bool, closerPosition?: array{int, int}, embedded?: bool}> $delimiterStack */
         $delimiterStack = [];
 
         /** @var array<string, true> $openSymmetric */
@@ -106,6 +106,7 @@ class NicknameMapper extends AbstractMapper
                 continue;
             }
 
+            $original = $part;
             $isEncapsulated = $delimiterStack !== [];
 
             if (! $isEncapsulated && $openerBytes !== '' && strpbrk($part, $openerBytes) === false) {
@@ -161,7 +162,8 @@ class NicknameMapper extends AbstractMapper
 
             $pending[$k] = $parts[$k];
 
-            $closeCount = $this->matchingCloserCount($part, $delimiterStack);
+            $embeddedCount = $this->matchingEmbeddedCloserCount($original, $k, $delimiterStack);
+            $closeCount = max($embeddedCount, $this->matchingCloserCount($part, $delimiterStack));
             if ($closeCount > 0) {
                 $closed = array_splice($delimiterStack, -$closeCount);
 
@@ -233,14 +235,15 @@ class NicknameMapper extends AbstractMapper
     }
 
     /**
-     * @param  list<array{open: string, close: string, symmetric: bool, adjacent?: bool}>  $delimiterStack
+     * @param  list<array{open: string, close: string, symmetric: bool, adjacent?: bool, closerPosition?: array{int, int}, embedded?: bool}>  $delimiterStack
      * @param  PartArray  $parts
      */
     private function appendNestedOpeners(string $remaining, array &$delimiterStack, array $parts, int $openKey): void
     {
         $prefix = $remaining;
         $offset = 0;
-        /** @var list<array{open: string, close: string, symmetric: bool, offset: int}> $nested */
+        $outerOpenerLength = strlen($delimiterStack[count($delimiterStack) - 1]['open']);
+        /** @var list<array{open: string, close: string, symmetric: bool, offset: int, closerPosition?: array{int, int}, embedded?: bool}> $nested */
         $nested = [];
         while (count($delimiterStack) + count($nested) < self::MAX_NESTING_DEPTH
             && preg_match($this->regexp, $prefix, $matches)) {
@@ -267,11 +270,13 @@ class NicknameMapper extends AbstractMapper
         // Validate inside out: a descendant may consume an enclosing closer,
         // as the inner parentheses do in ([(Bob) Robert] Z).
         $accepted = count($nested);
+        $ignoreOwned = $nested !== [] && count($delimiterStack) + count($nested) < self::MAX_NESTING_DEPTH
+            && $this->hasCompleteClosingSequence(array_merge($delimiterStack, $nested), $parts, $openKey, $remaining, $offset);
         $after = null;
         for ($i = count($nested) - 1; $i >= 0; --$i) {
             $candidate = $nested[$i];
             $start = $after ?? [$openKey, $candidate['offset']];
-            $innerPosition = $this->nextNestedCloser($parts, $openKey, $remaining, $candidate['close'], $start);
+            $innerPosition = $this->nextNestedCloser($parts, $openKey, $remaining, $candidate['close'], $start, false);
 
             // Identical closers still imply nesting when the outer span is
             // incomplete, preserving restoration of inputs such as (((Bob).
@@ -283,6 +288,7 @@ class NicknameMapper extends AbstractMapper
                     $remaining,
                     $candidate['close'],
                     [$openKey, $candidate['offset']],
+                    false,
                 );
             }
 
@@ -292,7 +298,7 @@ class NicknameMapper extends AbstractMapper
                         continue;
                     }
 
-                    $outerPosition = $this->nextNestedCloser($parts, $openKey, $remaining, $enclosing['close'], $start);
+                    $outerPosition = $this->nextNestedCloser($parts, $openKey, $remaining, $enclosing['close'], $start, $ignoreOwned);
                     if ($outerPosition !== null
                         && ($innerPosition[0] > $outerPosition[0]
                             || ($innerPosition[0] === $outerPosition[0]
@@ -308,6 +314,11 @@ class NicknameMapper extends AbstractMapper
                 $accepted = $i;
                 $after = null;
             } else {
+                $candidate['closerPosition'] = [
+                    $innerPosition[0],
+                    $innerPosition[1] + ($innerPosition[0] === $openKey ? $outerOpenerLength : 0),
+                ];
+                $nested[$i] = $candidate;
                 $end = [$innerPosition[0], $innerPosition[1] + strlen($candidate['close'])];
                 $after = $after === null || $end > $after ? $end : $after;
             }
@@ -328,16 +339,17 @@ class NicknameMapper extends AbstractMapper
      * @param  array{int, int}  $start
      * @return array{int, int}|null
      */
-    private function nextNestedCloser(array $parts, int $openKey, string $remaining, string $closer, array $start): ?array
+    private function nextNestedCloser(array $parts, int $openKey, string $remaining, string $closer, array $start, bool $ignoreOwned): ?array
     {
+        $cacheKey = ($ignoreOwned ? 'owned:' : 'raw:') . $closer;
         if ($start[0] === $openKey) {
             $offset = strpos($remaining, $closer, $start[1]);
             if ($offset !== false) {
                 return [$openKey, $offset];
             }
 
-            if (array_key_exists($closer, $this->nextNestedCloserPosition)) {
-                $next = $this->nextNestedCloserPosition[$closer];
+            if (array_key_exists($cacheKey, $this->nextNestedCloserPosition)) {
+                $next = $this->nextNestedCloserPosition[$cacheKey];
                 if ($next === null || $next[0] > $openKey) {
                     return $next;
                 }
@@ -351,10 +363,13 @@ class NicknameMapper extends AbstractMapper
             }
 
             $offset = strpos($parts[$i], $closer, $i === $start[0] ? $start[1] : 0);
+            if ($offset !== false && $ignoreOwned && $this->isOwnedStandaloneCloser($parts[$i], $closer, $offset)) {
+                continue;
+            }
             if ($offset !== false) {
                 $next = [$i, $offset];
                 if ($start[0] === $openKey) {
-                    $this->nextNestedCloserPosition[$closer] = $next;
+                    $this->nextNestedCloserPosition[$cacheKey] = $next;
                 }
 
                 return $next;
@@ -362,10 +377,155 @@ class NicknameMapper extends AbstractMapper
         }
 
         if ($start[0] === $openKey) {
-            $this->nextNestedCloserPosition[$closer] = null;
+            $this->nextNestedCloserPosition[$cacheKey] = null;
         }
 
         return null;
+    }
+
+    /**
+     * Relax an owned boundary only with a complete closing token for the
+     * tracked stack. Intervening openers must be self-contained single frames;
+     * a later independent nickname cannot donate a missing enclosing closer.
+     * One token is scanned at most once per frame, without recursive parsing.
+     *
+     * @param list<array{open: string, close: string, symmetric: bool, adjacent?: bool, closerPosition?: array{int, int}, embedded?: bool, offset?: int}> $frames
+     * @param PartArray $parts
+     */
+    private function hasCompleteClosingSequence(array $frames, array $parts, int $openKey, string $remaining, int $offset): bool
+    {
+        $inner = $frames[count($frames) - 1];
+        $position = $this->nextNestedCloser($parts, $openKey, $remaining, $inner['close'], [$openKey, $offset], false);
+        if ($position === null) {
+            return false;
+        }
+        [$key, $offset] = $position;
+        $closing = $key === $openKey ? $remaining : $parts[$key];
+        if (! is_string($closing) || ($key !== $openKey && preg_match($this->regexp, $closing))) {
+            return false;
+        }
+        $ordinarySuffix = false;
+        foreach (array_reverse($frames) as $frame) {
+            $next = strpos($closing, $frame['close'], $offset);
+            if ($next === false || ($ordinarySuffix && $next !== $offset)) {
+                return false;
+            }
+            $offset = $next + strlen($frame['close']);
+            // Only inferred frames may close before the consumable suffix.
+            $ordinarySuffix = $ordinarySuffix || (! ($frame['adjacent'] ?? false) && ! isset($frame['offset']));
+        }
+        if ($offset !== strlen($closing)
+            && ($frames[0]['symmetric'] || $offset !== strlen(rtrim($closing, '.,;:')))) {
+            return false;
+        }
+        for ($i = $openKey + 1; $i < $key; ++$i) {
+            $part = $parts[$i];
+            if (! is_string($part) || ! preg_match($this->regexp, $part, $matches)) {
+                continue;
+            }
+            $close = $this->delimiters[$matches[1]] ?? '';
+            if ($close === '') {
+                return false;
+            }
+            $owned = strpos($part, $close);
+            if ($owned === false || ! $this->isOwnedStandaloneCloser($part, $close, $owned)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private function isOwnedStandaloneCloser(string $part, string $closer, int $offset): bool
+    {
+        if (! preg_match($this->regexp, $part, $matches)) {
+            return false;
+        }
+        $opener = $matches[1];
+        if ($opener === '' || $opener === $closer || ($this->delimiters[$opener] ?? null) !== $closer
+            || ! str_starts_with($part, $opener) || $offset < strlen($opener)
+            || strpos($part, $closer, strlen($opener)) !== $offset
+            || strpos($part, $closer, $offset + 1) !== false) {
+            return false;
+        }
+        $end = $offset + strlen($closer);
+        if ($end !== strlen($part) && $end !== strlen(rtrim($part, '.,;:'))) {
+            return false;
+        }
+        // A single ordinary opener with its sole closer at the suffix owns it.
+        // Leave adjacent prefixes and surplus closing occurrences to streaming.
+        $body = substr($part, strlen($opener), $offset - strlen($opener));
+        return ! preg_match($this->regexp, $body);
+    }
+
+    /**
+     * Remember validated embedded closers without dropping their frames: a
+     * later suffix may still need them to match around an ordinary opener.
+     * Ordinary frames cannot use embedded closers. Distinct byte positions
+     * prevent identical/overlapping closers from satisfying two frames.
+     *
+     * @param list<array{open: string, close: string, symmetric: bool, adjacent?: bool, closerPosition?: array{int, int}, embedded?: bool}> $stack
+     */
+    private function matchingEmbeddedCloserCount(string $part, int $key, array &$stack): int
+    {
+        $consumed = 0;
+        $length = strlen(rtrim($part, '.,;:'));
+        for ($i = count($stack) - 1; $i >= 0; --$i) {
+            $top = $stack[$i];
+            if ($top['embedded'] ?? false) {
+                continue;
+            }
+            $position = $top['closerPosition'] ?? null;
+            if (! ($top['adjacent'] ?? false) || $position === null || $position[0] > $key) {
+                break;
+            }
+            if ($position[0] < $key || $position[1] < $consumed) {
+                // An ordinary frame may have owned the lookahead occurrence.
+                // Advance locally, never scan future tokens or cross a distinct
+                // enclosing boundary while trying another embedded closer.
+                $offset = strpos($part, $top['close'], $consumed);
+                if ($offset === false) {
+                    break;
+                }
+                foreach (array_slice($stack, 0, $i) as $enclosing) {
+                    if ($enclosing['close'] === $top['close']) {
+                        continue;
+                    }
+                    $boundary = strpos($part, $enclosing['close'], $consumed);
+                    if ($boundary !== false && $offset + strlen($top['close']) > $boundary) {
+                        break 2;
+                    }
+                }
+                $position = [$key, $offset];
+            }
+            $end = $position[1] + strlen($top['close']);
+            if ($end >= $length) {
+                break;
+            }
+            $consumed = $end;
+            $top['embedded'] = true;
+            $stack[$i] = $top;
+        }
+
+        $remaining = [];
+        $indices = [];
+        foreach ($stack as $i => $frame) {
+            if (! ($frame['embedded'] ?? false)) {
+                $indices[] = $i;
+                $remaining[] = $frame;
+            }
+        }
+        if (count($remaining) === count($stack)) {
+            return 0;
+        }
+        $suffix = substr($part, $consumed);
+        $matches = $this->closerCountFor($suffix, $remaining, false);
+        if ($matches === 0) {
+            $trimmed = rtrim($suffix, '.,;:');
+            if ($trimmed !== $suffix && $trimmed !== '') {
+                $matches = $this->closerCountFor($trimmed, $remaining, true);
+            }
+        }
+        return $matches === 0 ? 0 : count($stack) - $indices[count($remaining) - $matches];
     }
 
     private static function stripOpener(string $part, string $opener): string
@@ -379,7 +539,7 @@ class NicknameMapper extends AbstractMapper
     }
 
     /**
-     * @param  list<array{open: string, close: string, symmetric: bool, adjacent?: bool}>  $delimiterStack
+     * @param  list<array{open: string, close: string, symmetric: bool, adjacent?: bool, closerPosition?: array{int, int}, embedded?: bool}>  $delimiterStack
      */
     private function matchingCloserCount(string $part, array $delimiterStack): int
     {
@@ -414,7 +574,7 @@ class NicknameMapper extends AbstractMapper
      * enumerating subsets of the at-most-64-frame stack. With sanitized
      * closers of at most 64 bytes, there are at most 4,097 offsets.
      *
-     * @param list<array{open: string, close: string, symmetric: bool, adjacent?: bool}> $stack
+     * @param list<array{open: string, close: string, symmetric: bool, adjacent?: bool, closerPosition?: array{int, int}, embedded?: bool}> $stack
      */
     private function closerCountSkippingAdjacent(string $part, array $stack, bool $asymmetricOnly): int
     {
@@ -461,7 +621,7 @@ class NicknameMapper extends AbstractMapper
     }
 
     /**
-     * @param  list<array{open: string, close: string, symmetric: bool, adjacent?: bool}>  $delimiterStack
+     * @param  list<array{open: string, close: string, symmetric: bool, adjacent?: bool, closerPosition?: array{int, int}, embedded?: bool}>  $delimiterStack
      */
     private function closerCountFor(string $part, array $delimiterStack, bool $asymmetricOnly): int
     {

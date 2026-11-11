@@ -161,6 +161,8 @@ class UnclosedNicknameTest extends TestCase
      * @param list<string|\Iliaal\NameParser\Part\Nickname> $expected
      */
     #[DataProviderExternal(Mapper\NicknameMapperTest::class, 'matchableAdjacentCloserProvider')]
+    #[DataProviderExternal(Mapper\NicknameMapperTest::class, 'embeddedAdjacentCloserProvider')]
+    #[DataProviderExternal(Mapper\NicknameMapperTest::class, 'ownedBoundaryCloserProvider')]
     public function testMatchableCloserPreservesEveryNameField(array $delimiters, array $input, array $expected): void
     {
         $nickname = [];
@@ -181,6 +183,24 @@ class UnclosedNicknameTest extends TestCase
             'given_name' => 'John',
             'full_name' => 'John Doe',
         ], (new Parser())->setNicknameDelimiters($delimiters)->parse(implode(' ', $input))->toArray());
+    }
+
+    public function testOwnedBoundaryWitnessDoesNotUseLaterNicknames(): void
+    {
+        foreach (['(Rob)' => 'Rob', '(Rob) (Bobby)' => 'Rob Bobby', '(Rob Junior)' => 'Rob Junior'] as $later => $nickname) {
+            $this->assertSame([
+                'salutation' => '',
+                'firstname' => 'John',
+                'initials' => '',
+                'middlename' => ']',
+                'lastname_prefix' => '',
+                'lastname' => 'Doe',
+                'suffix' => '',
+                'nickname' => '[(Bob [E] X ' . $nickname,
+                'given_name' => 'John ]',
+                'full_name' => 'John ] Doe',
+            ], (new Parser())->parse('John ([(Bob [E] X) ] Doe ' . $later)->toArray());
+        }
     }
 
     public function testSamePairNestingAndIncompleteRestorationRemainIntentional(): void

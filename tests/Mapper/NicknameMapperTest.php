@@ -508,6 +508,226 @@ class NicknameMapperTest extends AbstractMapperTestCase
         );
     }
 
+    /**
+     * Regression cases: each embedded closer must leave the later suffix for
+     * its own enclosing frame, including a later independent nickname.
+     *
+     * @return iterable<string, array{array<string, string>, list<string>, list<string|Nickname>}>
+     */
+    public static function embeddedAdjacentCloserProvider(): iterable
+    {
+        $pairs = [
+            'bracket' => ['[', ']'],
+            'brace' => ['{', '}'],
+            'angle' => ['<', '>'],
+            ...iterator_to_array(self::asymmetricDelimiterProvider()),
+        ];
+        foreach ($pairs as $label => [$open, $close]) {
+            foreach ([
+                'text between closers' => [$open . 'Bób' . $close . 'X'],
+                'comma between closers' => [$open . 'Bób' . $close . ','],
+                'future embedded closer' => [$open . 'Bób', 'Rob' . $close . 'X'],
+                'token-start closer' => [$open . 'Bób', $close . 'Robert'],
+                'outer closer on later token' => [$open . 'Bób' . $close . 'X', 'Robert'],
+                'earlier closer owned by an ordinary frame' => [$open . 'Bób', $open . 'Extra' . $close, 'X' . $close . 'Y'],
+                'owned closer before a later enclosing token' => [$open . 'Bób', $open . 'Extra' . $close, 'X' . $close . 'Y', 'Robert'],
+                'multiple inferred frames advance past owned closer' => [$open . $open . 'Bób', $open . 'Extra' . $close, 'X' . $close . 'Y' . $close . 'Z'],
+            ] as $case => $values) {
+                $tokens = $values;
+                $tokens[0] = $open . $tokens[0];
+                $tokens[count($tokens) - 1] .= $close;
+                yield $label . ' ' . $case => [
+                    [$open => $close],
+                    ['John', ...$tokens, $open . 'Rob' . $close, 'Doe'],
+                    ['John', ...array_map(static fn(string $value): Nickname => new Nickname($value), $values), new Nickname('Rob'), 'Doe'],
+                ];
+            }
+        }
+        yield 'embedded closer under an ordinary enclosing frame' => [[],
+            ['John', '[Nick', '((Bob)X)', 'Z]', 'Doe'],
+            ['John', new Nickname('Nick'), new Nickname('((Bob)X)'), new Nickname('Z'), 'Doe']];
+        yield 'multiple embedded descendants sharing the outer closer' => [[],
+            ['John', '([(Bob)X]Y)', '(Rob)', 'Doe'],
+            ['John', new Nickname('[(Bob)X]Y'), new Nickname('Rob'), 'Doe']];
+        yield 'different custom openers with a shared closer' => [['«' => '界»', '‹' => '界»'],
+            ['John', '«‹Bób界»X界»', '«Rob界»', 'Doe'],
+            ['John', new Nickname('‹Bób界»X'), new Nickname('Rob'), 'Doe']];
+        yield 'punctuation after the outer closer' => [[],
+            ['John', '((Bob)X);', '(Rob)', 'Doe'],
+            ['John', new Nickname('(Bob)X'), new Nickname('Rob'), 'Doe']];
+    }
+
+    /**
+     * @param array<string, string> $delimiters
+     * @param list<string> $input
+     * @param list<string|Nickname> $expected
+     */
+    #[DataProvider('embeddedAdjacentCloserProvider')]
+    public function testEmbeddedAdjacentClosersLeaveTheEnclosingSuffix(array $delimiters, array $input, array $expected): void
+    {
+        $this->assertSame(
+            self::canonicalParts($expected),
+            self::canonicalParts((new NicknameMapper($delimiters))->map($input)),
+        );
+    }
+
+    /**
+     * The ordinary inner token owns its closer; it must not reject an earlier
+     * adjacent frame that closes after it but before the actual boundary.
+     *
+     * @return iterable<string, array{array<string, string>, list<string>, list<string|Nickname>}>
+     */
+    public static function ownedBoundaryCloserProvider(): iterable
+    {
+        $pairs = ['(' => ')', '[' => ']', '{' => '}', '<' => '>'];
+        $configurations = [];
+        foreach ($pairs as $a => $aClose) {
+            foreach ($pairs as $b => $bClose) {
+                if ($a !== $b) {
+                    $configurations[$a . $b] = [[$a, $aClose], [$b, $bClose]];
+                }
+            }
+        }
+        yield 'existing ordinary frame with consumable suffix' => [[],
+            ['John', '(Root', '(([(Bob', '[E]', 'X)])X))', '(Rob)', 'Doe'],
+            ['John', new Nickname('Root'), new Nickname('(([(Bob'), new Nickname('[E]'), new Nickname('X)])X)'), new Nickname('Rob'), 'Doe']];
+        $configurations['multi-character'] = [['<<', '>>'], ['[[', ']]']];
+        $configurations['multibyte'] = [['«', '界»'], ['‹', '葉›']];
+        $configurations['combining'] = [["e\u{0301}", '⌟'], ['«', '»']];
+        foreach ($configurations as $label => [[$a, $aClose], [$b, $bClose]]) {
+            $delimiters = [$a => $aClose, $b => $bClose];
+            foreach (['joined', 'embedded', 'punctuated owned token'] as $layout) {
+                $separator = $layout === 'embedded' ? 'X' : '';
+                $owned = $b . 'Extra' . $bClose . ($layout === 'punctuated owned token' ? ';' : '');
+                $ending = 'X' . $aClose . $separator . $bClose . $separator . $aClose . 'X';
+                yield $label . ' ' . $layout => [$delimiters,
+                    ['John', $a . $a . $b . $a . 'Bób', $owned, $ending . $aClose, $a . 'Rob' . $aClose, 'Doe'],
+                    ['John', new Nickname($a . $b . $a . 'Bób'), new Nickname($owned), new Nickname($ending), new Nickname('Rob'), 'Doe'],
+                ];
+            }
+        }
+    }
+
+    /**
+     * @param array<string, string> $delimiters
+     * @param list<string> $input
+     * @param list<string|Nickname> $expected
+     */
+    #[DataProvider('ownedBoundaryCloserProvider')]
+    public function testAnOwnedCloserDoesNotRejectAnEarlierAdjacentFrame(array $delimiters, array $input, array $expected): void
+    {
+        $this->assertSame(
+            self::canonicalParts($expected),
+            self::canonicalParts((new NicknameMapper($delimiters))->map($input)),
+        );
+    }
+
+    public function testClosingWitnessRequiresConsumableOrdinaryClosers(): void
+    {
+        $mapper = new NicknameMapper();
+        $method = new \ReflectionMethod($mapper, 'hasCompleteClosingSequence');
+        $frames = [
+            ['open' => '(', 'close' => ')', 'symmetric' => false],
+            ['open' => '(', 'close' => ')', 'symmetric' => false],
+            ['open' => '[', 'close' => ']', 'symmetric' => false, 'offset' => 1],
+        ];
+        $this->assertFalse($method->invoke($mapper, $frames, ['(Root', '([Bob', 'X]Y)Z)'], 1, '[Bob', 1));
+        $this->assertTrue($method->invoke($mapper, $frames, ['(Root', '([Bob', 'X]Y))'], 1, '[Bob', 1));
+    }
+
+    public function testOwnedBoundaryAndRawCloserSearchesHaveSeparateCaches(): void
+    {
+        $mapper = new NicknameMapper();
+        $method = new \ReflectionMethod($mapper, 'nextNestedCloser');
+        $parts = ['([Bob', '[Extra]', 'X])'];
+        foreach ([false, true, false] as $ignoreOwned) {
+            $this->assertSame(
+                $ignoreOwned ? [2, 1] : [1, 6],
+                $method->invoke($mapper, $parts, 0, '[Bob', ']', [0, 1], $ignoreOwned),
+            );
+        }
+    }
+
+    public function testStandaloneCloserOwnershipRequiresASoleOrdinarySuffix(): void
+    {
+        $mapper = new NicknameMapper(['[' => ']', '"' => '"', '«' => '界»', '<' => '..']);
+        $method = new \ReflectionMethod($mapper, 'isOwnedStandaloneCloser');
+        foreach ([
+            ['[E]', ']', 2, true],
+            ['[E];', ']', 2, true],
+            ['[E]X', ']', 2, false],
+            ['[[E]]', ']', 3, false],
+            ['[[E]', ']', 3, false],
+            ['[E]]', ']', 3, false],
+            ['"E"', '"', 2, false],
+            ['«E界»', '界»', 3, true],
+            ['<E...', '..', 2, false],
+            ['<E..;', '..', 2, false],
+        ] as [$part, $closer, $offset, $expected]) {
+            $this->assertSame($expected, $method->invoke($mapper, $part, $closer, $offset), $part);
+        }
+    }
+
+    /**
+     * Compatibility guards for byte offsets, ordinary frames and incomplete
+     * identical/shared nesting. Base parity alone is not their oracle.
+     *
+     * @return iterable<string, array{array<string, string>, list<string>, list<string|Nickname>}>
+     */
+    public static function embeddedCloserPreservationProvider(): iterable
+    {
+        yield 'embedded different pair under a symmetric boundary' => [[],
+            ['John', '"[Bób]X"', '(Rob)', 'Doe'],
+            ['John', new Nickname('[Bób]X'), new Nickname('Rob'), 'Doe']];
+        yield 'ordinary frame owns its embedded closer' => [[],
+            ['John', '((Bob', '(Rob)X)', 'Doe'],
+            ['John', '(Bob', '(Rob)X)', 'Doe']];
+        yield 'embedded closer never completes the outer span alone' => [[],
+            ['John', '((Bob)X', 'Doe'], ['John', '(Bob)X', 'Doe']];
+        yield 'same byte cannot close two inferred frames' => [[],
+            ['John', '(((Bob)X)', 'Doe'], ['John', '((Bob)X)', 'Doe']];
+        yield 'overlapping multibyte closer cannot also close its parent' => [['«' => '界界'],
+            ['John', '««Bób界界界', 'Doe'], ['John', '«Bób界界界', 'Doe']];
+        yield 'embedded byte offsets do not consume an overlapping suffix' => [['«' => '界界'],
+            ['John', '«««Bób界界X界界界', 'Doe'], ['John', '««Bób界界X界界界', 'Doe']];
+        yield 'embedded closer plus later owned closer remains incomplete' => [[],
+            ['John', '((Bob)X', 'Doe', '(Bobby)'], ['John', '(Bob)X', 'Doe', '(Bobby)']];
+        yield 'owned closer does not complete incomplete triple nesting' => [[],
+            ['John', '(((Bob', '(Extra)', 'X)Y)', 'Doe'], ['John', '((Bob', '(Extra)', 'X)Y)', 'Doe']];
+        yield 'later nickname cannot complete an earlier mixed span' => [[],
+            ['John', '([(Bob', '[E]', 'X)', ']', 'Doe', '(Rob)'],
+            ['John', new Nickname('[(Bob'), new Nickname('[E]'), new Nickname('X'), ']', 'Doe', new Nickname('Rob')]];
+        yield 'multiple later nicknames cannot donate enclosing closers' => [[],
+            ['John', '([(Bob', '[E]', 'X)', ']', 'Doe', '(Rob)', '(Bobby)'],
+            ['John', new Nickname('[(Bob'), new Nickname('[E]'), new Nickname('X'), ']', 'Doe', new Nickname('Rob'), new Nickname('Bobby')]];
+        yield 'multi-token later nickname cannot donate an enclosing closer' => [[],
+            ['John', '([(Bob', '[E]', 'X)', ']', 'Doe', '(Rob', 'Junior)'],
+            ['John', new Nickname('[(Bob'), new Nickname('[E]'), new Nickname('X'), ']', 'Doe', new Nickname('Rob'), new Nickname('Junior')]];
+        yield 'closing witness rejects an intervening unclosed ordinary frame' => [[],
+            ['John', '(([(Bob', '[E]', '(Junior', 'X)])X)', '(Rob)', 'Doe'],
+            ['John', '([(Bob', '[E]', '(Junior', 'X)])X)', '(Rob)', 'Doe']];
+        yield 'embedded ordinary closer cannot certify a complete witness' => [[],
+            ['John', '(Root', '(([(Bob', '[E]', 'X)])X)Y)', '(Rob)', 'Doe'],
+            ['John', 'Root', '(([(Bob', '[E]', 'X)])X)Y)', '(Rob)', 'Doe']];
+        yield 'existing duplicate closer recovery keeps its depth' => [[],
+            ['John', '(([Bob]X', 'Robert)', 'Doe'], ['John', '([Bob]X', 'Robert)', 'Doe']];
+    }
+
+    /**
+     * @param array<string, string> $delimiters
+     * @param list<string> $input
+     * @param list<string|Nickname> $expected
+     */
+    #[DataProvider('embeddedCloserPreservationProvider')]
+    public function testEmbeddedCloserPreservation(array $delimiters, array $input, array $expected): void
+    {
+        $mapper = new NicknameMapper($delimiters);
+        $this->assertSame(self::canonicalParts($expected), self::canonicalParts($mapper->map($input)));
+        // Index normalization and reuse must not retain positions from a prior call.
+        $sparse = array_combine(array_map(static fn(int $i): int => 3 * $i + 2, array_keys($input)), $input);
+        $this->assertSame(self::canonicalParts($expected), self::canonicalParts($mapper->map($sparse)));
+    }
+
     public function testRecoveryRetainsConsumableSamePairNesting(): void
     {
         $this->assertSame(
