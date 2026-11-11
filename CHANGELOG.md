@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-11-11
+
+### Fixed
+
+- A comma form whose surname starts with a particle keeps an all-caps given name: `Van Horn, MARIA` gives first name `Maria` and last name `van Horn` again, instead of first `Van`, last `Horn`, and suffix `MARIA` (a regression since 1.4.1).
+- `Confidence` flags a comma tail that is a single unknown all-caps word containing a vowel or a non-ASCII letter after a multi-word name (`Rowan Ellery, NGUYEN`, `John Smith, FACS`). The parser still reads the word as a credential, which is right for most provider data and wrong when the word is a given name. Parsed fields are unchanged. Over 30,000 NPPES rows, 73 are flagged and first and last name accuracy stays at 97.18%.
+
 ## [1.7.1] - 2026-11-11
 
 ### Changed
@@ -270,7 +277,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `setWhitespace()` now trims the configured characters from the edges of the input.
 - `setMaxSalutationIndex()` larger than the token count no longer emits undefined-array-key warnings.
 
-[Unreleased]: https://github.com/iliaal/nameparser/compare/1.7.1...HEAD
+[Unreleased]: https://github.com/iliaal/nameparser/compare/1.7.2...HEAD
+[1.7.2]: https://github.com/iliaal/nameparser/compare/1.7.1...1.7.2
 [1.7.1]: https://github.com/iliaal/nameparser/compare/1.7.0...1.7.1
 [1.7.0]: https://github.com/iliaal/nameparser/compare/1.6.0...1.7.0
 [1.6.0]: https://github.com/iliaal/nameparser/compare/1.5.0...1.6.0
