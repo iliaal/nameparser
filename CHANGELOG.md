@@ -9,6 +9,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - Reuse each Unicode case conversion while detecting internal case transitions in name parts. Normalized spelling, including mixed-case names, is unchanged.
+- Confidence assessment shares one token-case analysis pass for uppercase and lowercase uniformity, stopping once neither is possible. Ambiguity notes and parsing behavior are unchanged.
 
 ## [1.7.3] - 2026-11-11
 
