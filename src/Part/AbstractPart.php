@@ -96,10 +96,10 @@ abstract class AbstractPart
             $previousCase = null;
 
             foreach ($caseRuns[0] as $caseRun) {
-                $upper = mb_strtoupper($caseRun, 'UTF-8') === $caseRun
-                    && mb_strtolower($caseRun, 'UTF-8') !== $caseRun;
-                $lower = mb_strtolower($caseRun, 'UTF-8') === $caseRun
-                    && mb_strtoupper($caseRun, 'UTF-8') !== $caseRun;
+                $uppercase = mb_strtoupper($caseRun, 'UTF-8');
+                $lowercase = mb_strtolower($caseRun, 'UTF-8');
+                $upper = $uppercase === $caseRun && $lowercase !== $caseRun;
+                $lower = $lowercase === $caseRun && $uppercase !== $caseRun;
                 $currentCase = $upper ? true : ($lower ? false : null);
 
                 if (
