@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Reuse each Unicode case conversion while detecting internal case transitions in name parts. Normalized spelling, including mixed-case names, is unchanged.
+
 ## [1.7.3] - 2026-11-11
 
 ### Fixed
