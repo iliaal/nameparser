@@ -74,8 +74,7 @@ class Confidence
         }
 
         // Use the parser's token-level casing rules, including caseless scripts.
-        $uniformUpper = Text::isUniformUpperTokens($tokens);
-        $uniformLower = self::isUniformLowerTokens($tokens);
+        [$uniformUpper, $uniformLower] = self::uniformTokenCase($tokens);
 
         /** @var array<string, true> $notes */
         $notes = [];
@@ -437,25 +436,35 @@ class Confidence
     }
 
     /**
+     * Share case analysis between the two uniformity checks and stop when
+     * neither uniform case is possible. Uncased tokens do not decide either.
+     *
      * @param  list<string>  $tokens
+     * @return array{bool, bool}
      */
-    private static function isUniformLowerTokens(array $tokens): bool
+    private static function uniformTokenCase(array $tokens): array
     {
         $hasCased = false;
+        $upper = true;
+        $lower = true;
 
         foreach ($tokens as $token) {
-            if (! Text::isCased($token)) {
+            $analysis = Text::analyzeToken($token);
+
+            if (! $analysis['cased']) {
                 continue;
             }
 
             $hasCased = true;
+            $upper = $upper && $analysis['upper'];
+            $lower = $lower && $analysis['lower'];
 
-            if (! Text::isLowerCase($token)) {
-                return false;
+            if (! $upper && ! $lower) {
+                return [false, false];
             }
         }
 
-        return $hasCased;
+        return [$hasCased && $upper, $hasCased && $lower];
     }
 
     /**
