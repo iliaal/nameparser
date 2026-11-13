@@ -44,6 +44,13 @@ final class Text
      */
     private static array $longCache = [];
 
+    /**
+     * Last sanitizeNicknameDelimiters() input and result.
+     *
+     * @var array{array<array-key, string>, array<string, string>}|null
+     */
+    private static ?array $sanitizedDelimiters = null;
+
     public static function assertInputByteBudget(string $input): void
     {
         if (strlen($input) > self::MAX_INPUT_BYTES) {
@@ -155,6 +162,7 @@ final class Text
     {
         self::$cache = [];
         self::$longCache = [];
+        self::$sanitizedDelimiters = null;
     }
 
     private static function transform(string $word): string
@@ -220,6 +228,11 @@ final class Text
      */
     public static function sanitizeNicknameDelimiters(array $delimiters): array
     {
+        // Every mapper and segment parser re-sanitizes the same table; reuse the last small table's result.
+        if (self::$sanitizedDelimiters !== null && $delimiters === self::$sanitizedDelimiters[0]) {
+            return self::$sanitizedDelimiters[1];
+        }
+
         $isValid = static fn(string $close, string $open): bool => $open !== ''
             && $close !== ''
             && strlen($open) <= self::MAX_NICKNAME_DELIMITER_BYTES
@@ -229,14 +242,22 @@ final class Text
             && ! self::containsStructuralChar($open)
             && ! self::containsStructuralChar($close);
         $sanitized = [];
+        // Snapshot by value so a reference inside the caller's table cannot change a cached entry.
+        $snapshot = [];
+        $cacheable = count($delimiters) <= self::MAX_NICKNAME_DELIMITER_PAIRS;
 
         foreach ($delimiters as $open => $close) {
+            if ($cacheable) {
+                $snapshot[$open] = $close;
+            }
             // Validate every entry as before, but retain only the bounded result.
             if ($isValid($close, (string) $open)
                 && count($sanitized) < self::MAX_NICKNAME_DELIMITER_PAIRS) {
                 $sanitized[$open] = $close;
             }
         }
+
+        self::$sanitizedDelimiters = $cacheable ? [$snapshot, $sanitized] : null;
 
         return $sanitized;
     }
