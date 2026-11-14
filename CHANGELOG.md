@@ -8,6 +8,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Do not retain oversized rejected nickname delimiters in the sanitizer cache. Sanitized results are unchanged.
 - Reuse each Unicode case conversion while detecting internal case transitions in name parts. Normalized spelling, including mixed-case names, is unchanged.
 - Building a `Parser` no longer re-validates the same nickname-delimiter table in every mapper and segment parser. When a new `Parser` is created for each name, CPU per name drops by about 15-20% on the test-suite corpus. A reused `Parser` is unaffected. Parsed results are unchanged.
 - Confidence assessment shares one token-case analysis pass for uppercase and lowercase uniformity, stopping once neither is possible. Ambiguity notes and parsing behavior are unchanged.

@@ -247,11 +247,19 @@ final class Text
         $cacheable = count($delimiters) <= self::MAX_NICKNAME_DELIMITER_PAIRS;
 
         foreach ($delimiters as $open => $close) {
+            // Validate before caching so malformed values retain their TypeError behavior.
+            $valid = $isValid($close, (string) $open);
+            if ($cacheable && (strlen((string) $open) > self::MAX_NICKNAME_DELIMITER_BYTES
+                || strlen($close) > self::MAX_NICKNAME_DELIMITER_BYTES)) {
+                // Rejected entries can still be huge; bound retained bytes, not just pair count.
+                $cacheable = false;
+                $snapshot = [];
+            }
             if ($cacheable) {
                 $snapshot[$open] = $close;
             }
-            // Validate every entry as before, but retain only the bounded result.
-            if ($isValid($close, (string) $open)
+            // Retain only the bounded result.
+            if ($valid
                 && count($sanitized) < self::MAX_NICKNAME_DELIMITER_PAIRS) {
                 $sanitized[$open] = $close;
             }
