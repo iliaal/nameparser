@@ -21,6 +21,30 @@ class NicknameDelimiterSanitizationTest extends TestCase
         $this->assertSame($expected, Text::sanitizeNicknameDelimiters($delimiters));
     }
 
+    public function testLooselyEqualTablesKeepTheirOwnOrderAndValues(): void
+    {
+        $tables = [
+            ['(' => ')', '[' => ']'],
+            ['[' => ']', '(' => ')'],
+            ['<' => '1'],
+            ['<' => '01'],
+        ];
+
+        foreach ([...$tables, ...$tables] as $delimiters) {
+            $this->assertSame($delimiters, Text::sanitizeNicknameDelimiters($delimiters));
+        }
+    }
+
+    public function testReferencedDelimiterChangeIsRevalidated(): void
+    {
+        $close = ')';
+        $delimiters = ['(' => &$close];
+        $this->assertSame(['(' => ')'], Text::sanitizeNicknameDelimiters($delimiters));
+
+        $close = '';
+        $this->assertSame([], Text::sanitizeNicknameDelimiters($delimiters));
+    }
+
     /**
      * @return array<string, array{string}>
      */
