@@ -73,6 +73,22 @@ class NicknameDelimiterSanitizationTest extends TestCase
         (new \ReflectionMethod(Text::class, 'sanitizeNicknameDelimiters'))->invoke(null, $delimiters);
     }
 
+    public function testOversizedRejectedDelimitersAreNotRetained(): void
+    {
+        foreach (['open', 'close'] as $side) {
+            Text::sanitizeNicknameDelimiters([]);
+            $baseline = memory_get_usage();
+            $large = str_repeat('x', 4 * 1024 * 1024);
+            $delimiters = $side === 'open' ? [$large => ')'] : ['(' => $large];
+            $delimiters['['] = ']';
+
+            $this->assertSame(['[' => ']'], Text::sanitizeNicknameDelimiters($delimiters));
+            unset($large, $delimiters);
+
+            $this->assertLessThan(1024 * 1024, memory_get_usage() - $baseline);
+        }
+    }
+
     public function testLargeConfigurationDoesNotCopyDiscardedPairs(): void
     {
         $delimiters = [];
