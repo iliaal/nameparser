@@ -236,7 +236,11 @@ class GuardTest(unittest.TestCase):
         self.f.get(1)["labels"] = ["other", "changelog-override"]
         p = self.f.run("pr", 1)
         self.assertPass(p)
-        self.assertIn("::warning", p.stdout)
+        warnings = [line for line in p.stdout.splitlines() if line.startswith("::warning")]
+        self.assertTrue(any("changes released section [1.0.0]" in line
+                            and "`- First release`" in line
+                            and "allowed by the changelog-override label" in line
+                            for line in warnings), p.stdout)
 
     def test_whole_file_deletion_fails_and_label_overrides(self):
         self.f.pr(1, None)
@@ -244,7 +248,11 @@ class GuardTest(unittest.TestCase):
         self.f.get(1)["labels"] = ["changelog-override"]
         p = self.f.run("pr", 1)
         self.assertPass(p)
-        self.assertIn("::warning", p.stdout)
+        warnings = [line for line in p.stdout.splitlines() if line.startswith("::warning")]
+        self.assertTrue(any("changes released section [1.0.0]" in line
+                            and "`- First release`" in line
+                            and "allowed by the changelog-override label" in line
+                            for line in warnings), p.stdout)
 
     def test_unreleased_only_file_deletion_passes(self):
         self.f.commit("main", "# Changelog\n\n## [Unreleased]\n\n### Fixed\n- Fix\n", "unreleased only")
