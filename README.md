@@ -79,6 +79,24 @@ cases.
 composer require iliaal/nameparser
 ```
 
+### Migrating from The Iconic
+
+Replace the `theiconic/name-parser` requirement with `iliaal/nameparser` in
+`composer.json`, then update your Composer lockfile and installed dependencies.
+The fork requires PHP 8.3+ and `ext-mbstring`; check the CLI and deployment runtimes.
+
+Change application imports and fully qualified class names from
+`TheIconic\NameParser` to `Iliaal\NameParser`, for example:
+
+```diff
+-use TheIconic\NameParser\Parser;
++use Iliaal\NameParser\Parser;
+```
+
+Re-run your application's name fixtures before upgrading: the casing and
+credential rules intentionally change some parsed fields (see [What changed](#what-changed)).
+This is not a promise of identical output for every input.
+
 ## Usage
 
 ```php
