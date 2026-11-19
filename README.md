@@ -97,6 +97,18 @@ Re-run your application's name fixtures before upgrading: the casing and
 credential rules intentionally change some parsed fields (see [What changed](#what-changed)).
 This is not a promise of identical output for every input.
 
+Review the fork's explicit exceptions when migrating:
+
+- `LengthException` for parser or confidence [input limits](#parsing-limits),
+  including supplied confidence-token budgets, or the fixed
+  [combined-initial expansion ceiling](#configuration).
+- `InvalidArgumentException` for invalid-UTF-8 whitespace configuration or a
+  combined-initials limit outside 0 through 64 (including direct `InitialMapper`
+  construction); see [Configuration](#configuration).
+- `UnexpectedValueException` if internal PCRE control-character stripping fails
+  during parsing or confidence assessment. Malformed UTF-8 name input is scrubbed
+  first; it does not by itself trigger this exception (the input limits still apply).
+
 ## Usage
 
 ```php
