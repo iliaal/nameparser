@@ -19,18 +19,34 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        php: ['8.3', '8.4', '8.5']
+        php: ['8.3', '8.4', '8.5', '8.6']
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+      - if: matrix.php != '8.6'
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: ${{ matrix.php }}
           extensions: mbstring
           coverage: none
           tools: composer:v2
+      # This immutable upstream commit resolves PHP 8.6 to the stable channel.
+      - if: matrix.php == '8.6'
+        uses: shivammathur/setup-php@3c21e10268bafaf84c59e8f4e65b39acacb62ca4 # main
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring
+          coverage: none
+          tools: composer:v2
+      - if: matrix.php == '8.6'
+        name: Verify stable PHP 8.6 and mbstring
+        run: |
+          php --version
+          php -r 'exit(preg_match("/^8\.6\.[0-9]+$/D", PHP_VERSION) && extension_loaded("mbstring") ? 0 : 1);'
       - uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda # 4.0.0
+      - if: matrix.php == '8.6'
+        run: composer check-platform-reqs
       - run: composer audit
       - run: php -d memory_limit=256M vendor/bin/phpunit
 
